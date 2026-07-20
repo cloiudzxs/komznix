@@ -63,7 +63,8 @@ export async function POST(request) {
         const services = await getServices();
         service = (services || []).find((s) => String(s.service) === String(serviceId));
     } catch (err) {
-        return NextResponse.json({ error: `Gagal ambil data layanan dari provider: ${err.message}` }, { status: 502 });
+        console.error('getServices dari provider gagal:', err.message);
+        return NextResponse.json({ error: 'Gagal mengambil data layanan. Silakan coba lagi beberapa saat.' }, { status: 502 });
     }
 
     if (!service) {
@@ -91,19 +92,25 @@ export async function POST(request) {
     const { data: newBalance, error: deductError } = await supabase.rpc('deduct_balance', { amount: price });
 
     if (deductError) {
-        const msg = /insufficient|kurang|saldo/i.test(deductError.message)
+        const isInsufficientBalance = /insufficient|kurang|saldo/i.test(deductError.message);
+        console.error('deduct_balance gagal:', deductError.message);
+        const msg = isInsufficientBalance
             ? 'Saldo kamu tidak cukup. Silakan top up dulu.'
-            : deductError.message;
+            : 'Gagal memproses saldo. Silakan coba lagi atau hubungi dukungan.';
         return NextResponse.json({ error: msg }, { status: 400 });
     }
 
     try {
         const result = await placeOrder({ serviceId, link, quantity: quantityNum });
-        return NextResponse.json({ ...result, price, newBalance: Number(newBalance) });
+        return NextResponse.json({ order: result?.order, price, newBalance: Number(newBalance) });
     } catch (err) {
         // Order ke provider gagal PADAHAL saldo udah kepotong -> refund balik
         // biar pelanggan gak rugi.
         await supabase.rpc('add_balance', { amount: price });
-        return NextResponse.json({ error: err.message }, { status: 400 });
+        console.error('placeOrder ke provider gagal:', err.message);
+        return NextResponse.json(
+            { error: 'Pesanan gagal diproses. Saldo kamu sudah dikembalikan — silakan coba lagi atau hubungi dukungan kalau masalah berlanjut.' },
+            { status: 400 }
+        );
     }
 }

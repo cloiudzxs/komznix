@@ -6,6 +6,7 @@ export async function GET() {
         const services = await getServices();
         return NextResponse.json({ services });
     } catch (err) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        console.error('getServices dari provider gagal:', err.message);
+        return NextResponse.json({ error: 'Gagal mengambil daftar layanan.' }, { status: 500 });
     }
 }

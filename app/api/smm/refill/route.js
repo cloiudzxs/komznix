@@ -16,8 +16,9 @@ export async function POST(request) {
 
     try {
         const result = await refillOrder(providerOrderId);
-        return NextResponse.json(result);
+        return NextResponse.json({ refill: result?.refill });
     } catch (err) {
-        return NextResponse.json({ error: err.message }, { status: 500 });
+        console.error('refillOrder ke provider gagal:', err.message);
+        return NextResponse.json({ error: 'Gagal memproses refill. Silakan coba lagi.' }, { status: 500 });
     }
 }

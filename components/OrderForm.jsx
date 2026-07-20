@@ -253,9 +253,9 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
                         <span>Layanan</span>
                         <span className="text-white text-right">{success.layanan}</span>
                     </div>
-                    <div className="flex justify-between text-gray-400">
-                        <span>Target</span>
-                        <span className="text-white truncate max-w-[220px]">{success.target}</span>
+                    <div className="flex justify-between gap-3 text-gray-400 min-w-0">
+                        <span className="shrink-0">Target</span>
+                        <span className="text-white truncate min-w-0">{success.target}</span>
                     </div>
                     <div className="flex justify-between text-gray-400">
                         <span>Jumlah</span>
@@ -331,8 +331,7 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
                     <p className="font-bold mb-1">Gagal memuat layanan dari provider</p>
                     <p className="text-sm text-gray-400">{loadError}</p>
                     <p className="text-xs text-gray-500 mt-3">
-                        Cek apakah <code className="text-gray-300">SMMSOC_API_KEY</code> sudah diisi di{' '}
-                        <code className="text-gray-300">.env.local</code>, dan server sudah di-restart setelahnya.
+                        Terjadi kendala saat mengambil daftar layanan. Silakan coba lagi beberapa saat, atau hubungi dukungan kalau masalah berlanjut.
                     </p>
                 </div>
                 <button
