@@ -86,7 +86,7 @@ export default function TermsOfService() {
                     <Section title="10. Hubungi Kami">
                         <p>
                             Pertanyaan seputar Syarat & Ketentuan ini bisa dikirim ke{' '}
-                            <a href="mailto:support@suntiksosmed.store" className="text-[#B9FF66] hover:underline">support@suntiksosmed.store</a>.
+                            <a href="mailto:suntiksosmed@proton.me" className="text-[#B9FF66] hover:underline">suntiksosmed@proton.me</a>.
                         </p>
                     </Section>
                 </div>

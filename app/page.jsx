@@ -529,8 +529,8 @@ export default function Home() {
             {/* Contact */}
             <div className="flex flex-col gap-3">
               <h4 className="text-sm uppercase tracking-wider text-gray-500 font-medium mb-1">Kontak</h4>
-              <a href="mailto:support@suntiksosmed.store" className="text-gray-300 hover:text-[#B9FF66] transition-colors text-sm flex items-center gap-2 w-fit">
-                <Mail className="w-4 h-4 shrink-0" /> support@suntiksosmed.store
+              <a href="mailto:suntiksosmed@proton.me" className="text-gray-300 hover:text-[#B9FF66] transition-colors text-sm flex items-center gap-2 w-fit">
+                <Mail className="w-4 h-4 shrink-0" /> suntiksosmed@proton.me
               </a>
               <div className="flex items-center gap-2 text-gray-500 text-xs mt-1">
                 <ShieldCheck className="w-4 h-4 shrink-0 text-[#B9FF66]" />

@@ -73,7 +73,7 @@ export default function PrivacyPolicy() {
                     <Section title="8. Hubungi Kami">
                         <p>
                             Kalau kamu punya pertanyaan seputar Kebijakan Privasi ini, hubungi kami di{' '}
-                            <a href="mailto:support@suntiksosmed.store" className="text-[#B9FF66] hover:underline">support@suntiksosmed.store</a>.
+                            <a href="mailto:suntiksosmed@proton.me" className="text-[#B9FF66] hover:underline">suntiksosmed@proton.me</a>.
                         </p>
                     </Section>
                 </div>

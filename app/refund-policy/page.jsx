@@ -74,7 +74,7 @@ export default function RefundPolicy() {
                     <Section title="8. Hubungi Kami">
                         <p>
                             Kalau ada pesanan yang menurut kamu berhak refund tapi belum diproses otomatis, hubungi kami di{' '}
-                            <a href="mailto:support@suntiksosmed.store" className="text-[#B9FF66] hover:underline">support@suntiksosmed.store</a>.
+                            <a href="mailto:suntiksosmed@proton.me" className="text-[#B9FF66] hover:underline">suntiksosmed@proton.me</a>.
                         </p>
                     </Section>
                 </div>

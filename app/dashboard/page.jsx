@@ -618,7 +618,7 @@ export default function DashboardPage() {
         <div className="bg-[#111111] min-h-screen text-white flex">
             {/* Sidebar - desktop */}
             <aside className="hidden lg:flex lg:w-72 flex-col border-r border-white/10 p-6 shrink-0">
-                <Link href="/" className="flex items-center gap-2 mb-10">
+                <Link href="/dashboard" className="flex items-center gap-2 mb-10">
                     <Asterisk className="w-8 h-8 text-white" />
                     <span className="text-2xl font-bold tracking-tight">
                         SuntikSosmed<span className="text-[#B9FF66]">.</span>
@@ -656,7 +656,7 @@ export default function DashboardPage() {
                     <div className="absolute inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} />
                     <aside className="absolute left-0 top-0 bottom-0 w-72 bg-[#111111] border-r border-white/10 p-6 flex flex-col">
                         <div className="flex items-center justify-between mb-10">
-                            <Link href="/" className="flex items-center gap-2">
+                            <Link href="/dashboard" className="flex items-center gap-2">
                                 <Asterisk className="w-8 h-8 text-white" />
                                 <span className="text-2xl font-bold tracking-tight">
                                     SuntikSosmed<span className="text-[#B9FF66]">.</span>
