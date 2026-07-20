@@ -24,3 +24,22 @@ body {
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
 }
+
+/* Safari iOS otomatis nge-zoom kalau user tap input yang font-size-nya di
+   bawah 16px — kebanyakan input di app ini pakai Tailwind text-sm (14px)
+   atau lebih kecil. Override khusus di layar HP ini aja, jadi tampilan
+   desktop (yang emang udah dirancang pakai text-sm) gak berubah. */
+@media (max-width: 768px) {
+
+  input,
+  select,
+  textarea {
+    font-size: 16px !important;
+  }
+}
+
+/* Hilangin kotak abu-abu yang nongol pas tap tombol/link di HP (Android
+   Chrome khususnya) — biar berasa lebih kayak app native. */
+* {
+  -webkit-tap-highlight-color: transparent;
+}
