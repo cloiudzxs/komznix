@@ -457,18 +457,13 @@ export default function DashboardPage() {
         router.push('/');
     };
 
-    // Ubah saldo lewat RPC di database (deduct_balance / add_balance) — dua
-    // fungsi itu ngecek & update balance secara atomik di server, jadi gak
-    // bisa dicurangi lewat DevTools kayak kalau saldo cuma disimpen di client.
-    async function adjustBalance(delta) {
-        const rpcName = delta < 0 ? 'deduct_balance' : 'add_balance';
-        const { data, error } = await supabase.rpc(rpcName, { amount: Math.abs(delta) });
-        if (error) {
-            console.error('Gagal update saldo:', error.message);
-            return;
-        }
-        setBalance(Number(data));
-    }
+    // Catatan: penyesuaian saldo positif (add_balance) SENGAJA gak pernah
+    // dipanggil dari client -- fungsi itu udah di-revoke dari role
+    // authenticated di database, cuma boleh dipanggil server pakai service
+    // role (misal buat refund otomatis di /api/smm/order). Kalau nanti
+    // butuh nambah saldo dari sisi customer (misal QRIS otomatis beneran
+    // nyambung), itu HARUS lewat API route server-side, bukan RPC langsung
+    // dari sini.
 
     async function handleClaimKomisi() {
         setClaimError('');
@@ -823,7 +818,7 @@ export default function DashboardPage() {
                     ) : activeMenu === 'Riwayat Pesanan' ? (
                         <RiwayatPesananSection orders={orders} historyNow={historyNow} />
                     ) : activeMenu === 'Saldo & Deposit' ? (
-                        <SaldoSection balance={balance} onAddBalance={(amount) => adjustBalance(amount)} />
+                        <SaldoSection balance={balance} />
                     ) : activeMenu === 'Tiket' ? (
                         <TiketSection />
                     ) : activeMenu === 'Daftar Layanan' ? (

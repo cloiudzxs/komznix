@@ -1,14 +1,12 @@
 import { NextResponse } from 'next/server';
+import { verifyAdmin } from '../../../../lib/supabase/verifyAdmin';
 import { getProviderBalance } from '../../../../lib/provider';
 
-// TODO KEAMANAN: route ini belum ada pengecekan admin sama sekali. Ini
-// nampilin saldo akun kita sendiri di provider (bukan saldo customer) --
-// WAJIB admin-only sebelum di-deploy. Tambahin pengecekan sesi admin
-// (env-var credentials + signed httpOnly cookie, sama kayak pattern yang
-// dipakai di route /api/admin/*) di awal handler ini, return 401/403
-// kalau bukan admin, SEBELUM manggil getProviderBalance().
+// Saldo akun kita sendiri di provider (bukan saldo customer) -- admin-only.
+export async function GET(request) {
+    const { error } = await verifyAdmin(request);
+    if (error) return NextResponse.json({ error }, { status: 403 });
 
-export async function GET() {
     try {
         const result = await getProviderBalance();
         return NextResponse.json({ balance: result?.balance, currency: result?.currency });

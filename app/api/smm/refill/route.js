@@ -1,7 +1,12 @@
 import { NextResponse } from 'next/server';
+import { verifyAdmin } from '../../../../lib/supabase/verifyAdmin';
+import { logActivity } from '../../../../lib/supabase/logActivity';
 import { refillOrder } from '../../../../lib/provider';
 
 export async function POST(request) {
+    const { error, supabaseAdmin, email } = await verifyAdmin(request);
+    if (error) return NextResponse.json({ error }, { status: 403 });
+
     let body;
     try {
         body = await request.json();
@@ -16,6 +21,13 @@ export async function POST(request) {
 
     try {
         const result = await refillOrder(providerOrderId);
+
+        await logActivity(supabaseAdmin, {
+            adminEmail: email,
+            aksi: 'Refill',
+            detail: `Refill pesanan (provider order ${providerOrderId})`,
+        });
+
         return NextResponse.json({ refill: result?.refill });
     } catch (err) {
         console.error('refillOrder ke provider gagal:', err.message);

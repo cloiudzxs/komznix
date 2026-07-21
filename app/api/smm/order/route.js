@@ -105,8 +105,10 @@ export async function POST(request) {
         return NextResponse.json({ order: result?.order, price, newBalance: Number(newBalance) });
     } catch (err) {
         // Order ke provider gagal PADAHAL saldo udah kepotong -> refund balik
-        // biar pelanggan gak rugi.
-        await supabase.rpc('add_balance', { amount: price });
+        // biar pelanggan gak rugi. Pakai supabaseAdmin (BUKAN supabase biasa),
+        // soalnya add_balance bakal di-revoke dari role authenticated -- kalau
+        // masih pakai session user di sini, refund ini bakal ikut gagal.
+        await supabaseAdmin.rpc('add_balance', { amount: price });
         console.error('placeOrder ke provider gagal:', err.message);
         return NextResponse.json(
             { error: 'Pesanan gagal diproses. Saldo kamu sudah dikembalikan — silakan coba lagi atau hubungi dukungan kalau masalah berlanjut.' },
