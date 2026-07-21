@@ -491,10 +491,10 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
                             <button
                                 type="button"
                                 onClick={() => setIsCategoryDropdownOpen((v) => !v)}
-                                className="w-full flex items-center justify-between gap-2 bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-left focus:outline-none focus:border-[#B9FF66]"
+                                className="w-full flex items-start justify-between gap-2 bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-left focus:outline-none focus:border-[#B9FF66]"
                             >
-                                <span className="truncate">{category ? category.label : 'Pilih...'}</span>
-                                <ChevronDown className={`w-4 h-4 text-gray-500 shrink-0 transition-transform ${isCategoryDropdownOpen ? 'rotate-180' : ''}`} />
+                                <span className="text-left">{category ? category.label : 'Pilih...'}</span>
+                                <ChevronDown className={`w-4 h-4 text-gray-500 shrink-0 mt-0.5 transition-transform ${isCategoryDropdownOpen ? 'rotate-180' : ''}`} />
                             </button>
 
                             {isCategoryDropdownOpen && (
@@ -511,7 +511,7 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
                                                 setIsCategoryDropdownOpen(false);
                                                 setError('');
                                             }}
-                                            className={`w-full text-left px-4 py-2.5 text-sm truncate transition-colors ${c.id === categoryId
+                                            className={`w-full text-left px-4 py-2.5 text-sm leading-snug transition-colors ${c.id === categoryId
                                                 ? 'bg-[#B9FF66]/10 text-[#B9FF66]'
                                                 : 'text-gray-300 hover:bg-white/5'
                                                 }`}
@@ -532,12 +532,12 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
                                     type="button"
                                     disabled={!category}
                                     onClick={() => setIsServiceDropdownOpen((v) => !v)}
-                                    className="w-full flex items-center justify-between gap-2 bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-left focus:outline-none focus:border-[#B9FF66] disabled:opacity-50"
+                                    className="w-full flex items-start justify-between gap-2 bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-left focus:outline-none focus:border-[#B9FF66] disabled:opacity-50"
                                 >
-                                    <span className="truncate">
+                                    <span className="text-left">
                                         {service ? formatServiceLabel(service, favoriteIds.includes(String(service.id))) : 'Pilih...'}
                                     </span>
-                                    <ChevronDown className={`w-4 h-4 text-gray-500 shrink-0 transition-transform ${isServiceDropdownOpen ? 'rotate-180' : ''}`} />
+                                    <ChevronDown className={`w-4 h-4 text-gray-500 shrink-0 mt-0.5 transition-transform ${isServiceDropdownOpen ? 'rotate-180' : ''}`} />
                                 </button>
 
                                 {isServiceDropdownOpen && (
@@ -558,7 +558,7 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
                                                         setError('');
                                                         setIsServiceDropdownOpen(false);
                                                     }}
-                                                    className={`w-full text-left px-4 py-2.5 text-sm truncate transition-colors ${String(s.id) === String(serviceId)
+                                                    className={`w-full text-left px-4 py-2.5 text-sm leading-snug transition-colors ${String(s.id) === String(serviceId)
                                                         ? 'bg-[#B9FF66]/10 text-[#B9FF66]'
                                                         : 'text-gray-300 hover:bg-white/5'
                                                         }`}
