@@ -46,7 +46,7 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Body request tidak valid.' }, { status: 400 });
     }
 
-    const { serviceId, link, quantity } = body || {};
+    const { serviceId, link, quantity, comments } = body || {};
     const quantityNum = Number(quantity);
 
     if (!serviceId || !link || !quantityNum) {
@@ -101,7 +101,7 @@ export async function POST(request) {
     }
 
     try {
-        const result = await placeOrder({ serviceId, link, quantity: quantityNum });
+        const result = await placeOrder({ serviceId, link, quantity: quantityNum, comments });
         return NextResponse.json({ order: result?.order, price, newBalance: Number(newBalance) });
     } catch (err) {
         // Order ke provider gagal PADAHAL saldo udah kepotong -> refund balik

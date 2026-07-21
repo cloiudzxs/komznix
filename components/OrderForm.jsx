@@ -89,6 +89,7 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
     }, []);
     const [target, setTarget] = useState('');
     const [jumlah, setJumlah] = useState('');
+    const [comments, setComments] = useState('');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [success, setSuccess] = useState(null);
@@ -174,6 +175,23 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
     const estimasiWaktu = service ? formatEstimasiWaktu(jumlahNum, service.dailyCapacity) : null;
     const isInstagramFollowers =
         platform?.label === 'Instagram' && service?.name.toLowerCase().includes('follower');
+    // Layanan tipe "Custom Comments" (dan variannya) butuh teks komentar yang
+    // beneran mau diposting -- provider gak bisa nebak sendiri kata-katanya.
+    const isCustomComments = Boolean(service?.typeLabel?.toLowerCase().includes('comment'));
+    const commentLineCount = useMemo(
+        () => comments.split('\n').filter((line) => line.trim() !== '').length,
+        [comments]
+    );
+
+    // Buat Custom Comments, Jumlah HARUS sama persis dengan banyaknya baris
+    // komentar yang diisi (bukan angka manual) -- jadi kita samain otomatis
+    // tiap kali teks komentarnya berubah, field Jumlah-nya dikunci read-only.
+    useEffect(() => {
+        if (isCustomComments) {
+            setJumlah(commentLineCount > 0 ? String(commentLineCount) : '');
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [isCustomComments, commentLineCount]);
 
     // Kategori & Layanan di-reset manual di handler masing-masing (bukan lewat
     // useEffect yang ngikutin perubahan platformKey/categoryId), soalnya kalau
@@ -198,6 +216,10 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
             );
             return;
         }
+        if (isCustomComments && !comments.trim()) {
+            setError('Kata-kata komentar wajib diisi (satu komentar per baris).');
+            return;
+        }
         if (price > balance) {
             setError('Saldo kamu tidak cukup. Silakan top up dulu.');
             return;
@@ -208,7 +230,12 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
             const res = await fetch('/api/smm/order', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ serviceId: service.id, link: target.trim(), quantity: jumlahNum }),
+                body: JSON.stringify({
+                    serviceId: service.id,
+                    link: target.trim(),
+                    quantity: jumlahNum,
+                    ...(isCustomComments ? { comments: comments.trim() } : {}),
+                }),
             });
             const data = await res.json();
             if (!res.ok || data.error) {
@@ -230,6 +257,7 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
             setSuccess(order);
             setTarget('');
             setJumlah('');
+            setComments('');
         } catch (err) {
             setError(err.message);
         } finally {
@@ -668,6 +696,27 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
                         />
                     </div>
 
+                    {isCustomComments && (
+                        <div>
+                            <div className="flex items-center gap-2 mb-2">
+                                <label className="text-sm text-gray-400">Kata-Kata Komentar</label>
+                                <span className="text-[10px] font-medium bg-[#B9FF66]/10 text-[#B9FF66] px-2 py-0.5 rounded-full">
+                                    Satu komentar per baris
+                                </span>
+                            </div>
+                            <textarea
+                                value={comments}
+                                onChange={(e) => setComments(e.target.value)}
+                                placeholder={'Mantap!\nKeren banget 🔥\nSuka deh sama ini'}
+                                rows={4}
+                                className="w-full bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#B9FF66] resize-y"
+                            />
+                            <p className="text-xs text-gray-500 mt-1.5">
+                                Jumlah pesanan di bawah otomatis mengikuti banyaknya baris komentar di sini.
+                            </p>
+                        </div>
+                    )}
+
                     <div>
                         <div className="flex items-center gap-2 mb-2">
                             <label className="text-sm text-gray-400">Jumlah</label>
@@ -677,13 +726,20 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
                             <span className="text-[10px] font-medium bg-[#B9FF66]/10 text-[#B9FF66] px-2 py-0.5 rounded-full">
                                 Maks: {(service?.max ?? 0).toLocaleString('id-ID')}
                             </span>
+                            {isCustomComments && (
+                                <span className="text-[10px] font-medium bg-white/10 text-gray-400 px-2 py-0.5 rounded-full">
+                                    Otomatis dari jumlah komentar
+                                </span>
+                            )}
                         </div>
                         <input
                             type="number"
                             value={jumlah}
                             onChange={(e) => setJumlah(e.target.value)}
                             placeholder="Contoh: 1000"
-                            className="w-full bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#B9FF66]"
+                            readOnly={isCustomComments}
+                            className={`w-full bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#B9FF66] ${isCustomComments ? 'text-gray-400 cursor-not-allowed' : ''
+                                }`}
                         />
                     </div>
 

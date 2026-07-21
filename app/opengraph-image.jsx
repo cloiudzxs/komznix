@@ -1,4 +1,5 @@
 import { ImageResponse } from 'next/og';
+import { Asterisk } from 'lucide-react';
 
 export const runtime = 'edge';
 export const alt = 'SuntikSosmed — Panel SMM Terpercaya untuk Followers, Likes & Views';
@@ -21,23 +22,7 @@ export default async function Image() {
                 }}
             >
                 <div style={{ display: 'flex', alignItems: 'center', marginBottom: 32 }}>
-                    <div
-                        style={{
-                            width: 90,
-                            height: 90,
-                            borderRadius: 24,
-                            backgroundColor: '#B9FF66',
-                            display: 'flex',
-                            alignItems: 'center',
-                            justifyContent: 'center',
-                            marginRight: 28,
-                            fontSize: 56,
-                            color: '#000000',
-                            fontWeight: 700,
-                        }}
-                    >
-                        *
-                    </div>
+                    <Asterisk size={90} color="#ffffff" strokeWidth={2} style={{ marginRight: 28 }} />
                     <div style={{ display: 'flex', fontSize: 72, fontWeight: 700, color: '#ffffff' }}>
                         SuntikSosmed
                         <span style={{ color: '#B9FF66' }}>.</span>
