@@ -1,28 +1,30 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #111111;
+  --foreground: #ffffff;
+  --accent: #B9FF66;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  scroll-behavior: smooth;
+  overflow-x: hidden;
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 /* Safari iOS otomatis nge-zoom kalau user tap input yang font-size-nya di
@@ -39,7 +41,45 @@ body {
 }
 
 /* Hilangin kotak abu-abu yang nongol pas tap tombol/link di HP (Android
-   Chrome khususnya) — biar berasa lebih kayak app native. */
+   Chrome khususnya) — biar berasa lebih kayak app native. Sekalian atur
+   scrollbar disini biar nyatu sama tema gelap (bawaan browser putih/terang,
+   kelihatan aneh di atas background gelap). */
 * {
   -webkit-tap-highlight-color: transparent;
+  scrollbar-width: thin;
+  scrollbar-color: #333333 var(--background);
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--background);
+}
+
+::-webkit-scrollbar-thumb {
+  background: #333333;
+  border-radius: 999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--accent);
+}
+
+/* Warna teks yang di-blok/select ikutin warna brand, bukan biru default
+   browser -- biar konsisten sama tema hijau di seluruh app. */
+::selection {
+  background: var(--accent);
+  color: #000000;
+}
+
+/* Outline fokus (navigasi keyboard) ikutin warna brand, bukan biru default
+   browser. Elemen yang udah punya focus style sendiri lewat Tailwind
+   (focus:outline-none dst) gak kepengaruh, ini cuma fallback global buat
+   elemen yang belum di-custom. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
