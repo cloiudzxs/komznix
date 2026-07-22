@@ -2,7 +2,7 @@
 
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useState } from 'react';
+import { useState, useRef, useEffect } from 'react';
 import {
   Menu,
   Asterisk,
@@ -20,7 +20,8 @@ import {
   ShieldCheck,
   BadgeCheck,
   ChevronDown,
-  Code2
+  Code2,
+  Gift
 } from 'lucide-react';
 
 // --- Helper Components ---
@@ -37,6 +38,41 @@ const Button = ({ children, variant = 'primary', className = '', onClick, ...pro
     <button onClick={onClick} className={`${baseStyle} ${variants[variant]} ${className}`} {...props}>
       {children}
     </button>
+  );
+};
+
+// Animasi fade-in + geser dikit ke atas pas elemen kescroll masuk viewport.
+// Pakai IntersectionObserver murni (gak nambah dependency baru). unobserve
+// abis sekali muncul, jadi animasinya cuma jalan sekali per elemen, gak
+// ngulang tiap di-scroll bolak-balik.
+const FadeIn = ({ children, className = '', delay = 0 }) => {
+  const ref = useRef(null);
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const observer = new IntersectionObserver(
+      ([entry]) => {
+        if (entry.isIntersecting) {
+          setVisible(true);
+          observer.unobserve(el);
+        }
+      },
+      { threshold: 0.15 }
+    );
+    observer.observe(el);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div
+      ref={ref}
+      className={`transition-all duration-700 ease-out ${visible ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'} ${className}`}
+      style={{ transitionDelay: `${delay}ms` }}
+    >
+      {children}
+    </div>
   );
 };
 
@@ -200,6 +236,7 @@ export default function Home() {
           <a href="#services" className="hover:text-[#B9FF66] transition-colors">Layanan</a>
           <a href="#how-it-works" className="hover:text-[#B9FF66] transition-colors">Cara Kerja</a>
           <a href="#api" className="hover:text-[#B9FF66] transition-colors">API</a>
+          <a href="#referral" className="hover:text-[#B9FF66] transition-colors">Referral</a>
           <a href="#case-studies" className="hover:text-[#B9FF66] transition-colors">Studi Kasus</a>
           <Link href="/login" className="hover:text-[#B9FF66] transition-colors">Masuk</Link>
           <Link href="/register">
@@ -216,6 +253,7 @@ export default function Home() {
             <a href="#services" onClick={() => setMenuOpen(false)} className="hover:text-[#B9FF66]">Layanan</a>
             <a href="#how-it-works" onClick={() => setMenuOpen(false)} className="hover:text-[#B9FF66]">Cara Kerja</a>
             <a href="#api" onClick={() => setMenuOpen(false)} className="hover:text-[#B9FF66]">API</a>
+            <a href="#referral" onClick={() => setMenuOpen(false)} className="hover:text-[#B9FF66]">Referral</a>
             <a href="#case-studies" onClick={() => setMenuOpen(false)} className="hover:text-[#B9FF66]">Studi Kasus</a>
             <Link href="/login" className="hover:text-[#B9FF66]">Masuk</Link>
             <Link href="/register">
@@ -228,7 +266,7 @@ export default function Home() {
       <main className="container mx-auto px-4 md:px-8">
         {/* Hero Section */}
         <section className="py-12 md:py-24 flex flex-col-reverse md:flex-row items-center gap-12">
-          <div className="md:w-1/2 flex flex-col items-start gap-6">
+          <FadeIn className="md:w-1/2 flex flex-col items-start gap-6">
             <h1 className="text-5xl md:text-7xl font-bold leading-tight">
               Naikkan performa <br className="hidden md:block" /> social media <br className="hidden md:block" /> kamu, instan.
             </h1>
@@ -244,9 +282,9 @@ export default function Home() {
               <TrustBadge icon={RefreshCw} label="Garansi refill" />
               <TrustBadge icon={BadgeCheck} label="Proses instan" />
             </div>
-          </div>
+          </FadeIn>
 
-          <div className="md:w-1/2 relative flex justify-center items-center">
+          <FadeIn delay={150} className="md:w-1/2 relative flex justify-center items-center">
             {/* Abstract hero illustration */}
             <div className="relative w-full max-w-md aspect-square flex items-center justify-center">
               <div className="absolute inset-0 border-[3px] border-dashed border-gray-600 rounded-full animate-[spin_60s_linear_infinite]" />
@@ -261,15 +299,15 @@ export default function Home() {
                 <Users className="w-8 h-8 text-black" />
               </div>
             </div>
-          </div>
+          </FadeIn>
         </section>
 
         {/* Supported Platforms */}
-        <section className="py-12 border-t border-white/10">
+        <FadeIn className="py-12 border-t border-white/10">
           <p className="text-center md:text-left text-sm text-gray-500 mb-6">
             Siap dipakai untuk platform-platform berikut
           </p>
-          <div className="flex flex-wrap justify-center md:justify-between items-center gap-8 md:gap-12 opacity-70 grayscale hover:grayscale-0 hover:opacity-100 transition-all duration-500">
+          <div className="flex flex-wrap justify-center md:justify-between items-center gap-8 md:gap-12 transition-all duration-500 [@media(hover:hover)]:opacity-70 [@media(hover:hover)]:grayscale [@media(hover:hover)]:hover:grayscale-0 [@media(hover:hover)]:hover:opacity-100">
             <h3 className="text-2xl font-bold text-[#E1306C]">Instagram</h3>
             <h3 className="text-2xl font-bold">TikTok</h3>
             <h3 className="text-2xl font-bold text-[#FF0000]">YouTube</h3>
@@ -279,57 +317,69 @@ export default function Home() {
             <h3 className="text-2xl font-bold text-[#1DB954]">Spotify</h3>
             <h3 className="text-2xl font-bold text-[#EE4D2D]">Shopee</h3>
           </div>
-        </section>
+        </FadeIn>
 
         {/* Services Section */}
         <section id="services" className="py-20 md:py-32">
-          <SectionHeading
-            title="Layanan"
-            description="SuntikSosmed menyediakan berbagai layanan SMM untuk bantu akun media sosial kamu tumbuh lebih cepat dan lebih efektif."
-          />
+          <FadeIn>
+            <SectionHeading
+              title="Layanan"
+              description="SuntikSosmed menyediakan berbagai layanan SMM untuk bantu akun media sosial kamu tumbuh lebih cepat dan lebih efektif."
+            />
+          </FadeIn>
 
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            <ServiceCard
-              title1="Followers"
-              title2="Instagram & TikTok"
-              theme="light"
-              icon={UserPlus}
-              href="/layanan?q=followers"
-            />
-            <ServiceCard
-              title1="Likes &"
-              title2="Reactions"
-              theme="dark"
-              icon={Heart}
-              href="/layanan?q=likes"
-            />
-            <ServiceCard
-              title1="Views &"
-              title2="Watch Time"
-              theme="dark"
-              icon={Eye}
-              href="/layanan?q=views"
-            />
-            <ServiceCard
-              title1="Auto"
-              title2="Refill Garansi"
-              theme="light"
-              icon={RefreshCw}
-            />
-            <ServiceCard
-              title1="API"
-              title2="Integration"
-              theme="dark"
-              icon={Code2}
-              href="#api"
-            />
+            <FadeIn delay={0}>
+              <ServiceCard
+                title1="Followers"
+                title2="Instagram & TikTok"
+                theme="light"
+                icon={UserPlus}
+                href="/layanan?q=followers"
+              />
+            </FadeIn>
+            <FadeIn delay={80}>
+              <ServiceCard
+                title1="Likes &"
+                title2="Reactions"
+                theme="dark"
+                icon={Heart}
+                href="/layanan?q=likes"
+              />
+            </FadeIn>
+            <FadeIn delay={160}>
+              <ServiceCard
+                title1="Views &"
+                title2="Watch Time"
+                theme="dark"
+                icon={Eye}
+                href="/layanan?q=views"
+              />
+            </FadeIn>
+            <FadeIn delay={0}>
+              <ServiceCard
+                title1="Auto"
+                title2="Refill Garansi"
+                theme="light"
+                icon={RefreshCw}
+              />
+            </FadeIn>
+            <FadeIn delay={80}>
+              <ServiceCard
+                title1="API"
+                title2="Integration"
+                theme="dark"
+                icon={Code2}
+                href="#api"
+              />
+            </FadeIn>
           </div>
         </section>
 
         {/* API / Developers Section */}
         <section id="api" className="py-10">
           <div className="bg-[#191A19] border border-white/10 rounded-[40px] p-8 md:p-16 flex flex-col md:flex-row items-center gap-12">
-            <div className="md:w-1/2 flex flex-col items-start gap-5">
+            <FadeIn className="md:w-1/2 flex flex-col items-start gap-5">
               <span className="bg-[#B9FF66] text-black px-3 py-1 rounded-md text-sm font-bold w-fit">
                 Untuk Developer
               </span>
@@ -344,51 +394,94 @@ export default function Home() {
                   Dapatkan API Key <ArrowRight className="w-4 h-4" />
                 </Button>
               </Link>
-            </div>
+            </FadeIn>
 
-            <div className="md:w-1/2 w-full">
+            <FadeIn delay={150} className="md:w-1/2 w-full">
               <pre className="bg-[#111111] border border-white/10 rounded-2xl p-6 text-xs md:text-sm text-gray-300 overflow-x-auto">
                 {`curl https://suntiksosmed.store/api/v1/order \\
   -H "Authorization: Bearer API_KEY_KAMU" \\
   -H "Content-Type: application/json" \\
   -d '{"layanan": 123, "target": "https://instagram.com/username", "jumlah": 1000}'`}
               </pre>
-            </div>
+            </FadeIn>
+          </div>
+        </section>
+
+        {/* Referral Section */}
+        <section id="referral" className="py-10">
+          <div className="bg-[#191A19] border border-white/10 rounded-[40px] p-8 md:p-16 flex flex-col md:flex-row items-center gap-12">
+            <FadeIn className="md:w-1/2 flex flex-col items-start gap-5">
+              <span className="bg-[#B9FF66] text-black px-3 py-1 rounded-md text-sm font-bold w-fit">
+                Program Referral
+              </span>
+              <h3 className="text-3xl md:text-4xl font-bold leading-tight">
+                Ajak teman, kalian sama-sama untung
+              </h3>
+              <p className="text-gray-400 text-lg leading-relaxed">
+                Bagikan kode referral kamu ke teman atau komunitas. Setiap mereka order lewat kode kamu, komisi otomatis masuk ke saldo kamu — gak ada batas berapa kali kamu bisa ajak orang.
+              </p>
+              <Link href="/register">
+                <Button variant="primary" className="mt-2">
+                  Mulai Ajak Teman <ArrowRight className="w-4 h-4" />
+                </Button>
+              </Link>
+            </FadeIn>
+
+            <FadeIn delay={150} className="md:w-1/2 w-full flex justify-center">
+              <div className="relative w-full max-w-sm bg-[#111111] border border-white/10 rounded-3xl p-8 flex flex-col items-center gap-4 text-center">
+                <div className="w-16 h-16 rounded-full bg-[#B9FF66] flex items-center justify-center">
+                  <Gift className="w-8 h-8 text-black" />
+                </div>
+                <p className="text-gray-400 text-sm">Kode referral kamu sendiri</p>
+                <p className="font-mono text-xl font-bold text-[#B9FF66] bg-[#B9FF66]/10 px-4 py-2 rounded-xl">
+                  SUNTIK-XXXXX
+                </p>
+                <p className="text-gray-500 text-xs">Komisi otomatis masuk saldo tiap ada yang order pakai kode ini.</p>
+              </div>
+            </FadeIn>
           </div>
         </section>
 
         {/* How It Works Section */}
         <section id="how-it-works" className="py-20 md:py-32">
-          <SectionHeading
-            title="Cara Kerja"
-            description="Mulai kembangkan media sosial kamu hanya dalam tiga langkah simpel."
-          />
+          <FadeIn>
+            <SectionHeading
+              title="Cara Kerja"
+              description="Mulai kembangkan media sosial kamu hanya dalam tiga langkah simpel."
+            />
+          </FadeIn>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <StepCard
-              number="01"
-              title="Buat akun"
-              description="Daftar akun SuntikSosmed dalam hitungan detik, cukup dengan email dan verifikasi singkat."
-              icon={UserPlus}
-            />
-            <StepCard
-              number="02"
-              title="Pilih & top up"
-              description="Pilih platform dan jenis layanan yang kamu butuhkan, lalu isi saldo lewat QRIS."
-              icon={ShoppingCart}
-            />
-            <StepCard
-              number="03"
-              title="Pantau progress"
-              description="Pesanan langsung diproses dan bisa kamu pantau real-time dari dashboard."
-              icon={TrendingUp}
-            />
+            <FadeIn delay={0}>
+              <StepCard
+                number="01"
+                title="Buat akun"
+                description="Daftar akun SuntikSosmed dalam hitungan detik, cukup dengan email dan verifikasi singkat."
+                icon={UserPlus}
+              />
+            </FadeIn>
+            <FadeIn delay={80}>
+              <StepCard
+                number="02"
+                title="Pilih & top up"
+                description="Pilih platform dan jenis layanan yang kamu butuhkan, lalu isi saldo lewat QRIS."
+                icon={ShoppingCart}
+              />
+            </FadeIn>
+            <FadeIn delay={160}>
+              <StepCard
+                number="03"
+                title="Pantau progress"
+                description="Pesanan langsung diproses dan bisa kamu pantau real-time dari dashboard."
+                icon={TrendingUp}
+              />
+            </FadeIn>
           </div>
         </section>
 
         {/* CTA Section */}
         <section className="py-10">
-          <div className="bg-[#F3F3F3] rounded-[40px] p-8 md:p-16 flex flex-col md:flex-row items-center justify-between relative overflow-hidden">
+          <FadeIn className="bg-[#F3F3F3] rounded-[40px] p-8 md:p-16 flex flex-col md:flex-row items-center justify-between relative overflow-hidden">
             <div className="md:w-[55%] z-10 flex flex-col items-start gap-6">
               <h3 className="text-3xl md:text-5xl font-bold text-black leading-tight">
                 Yuk kembangkan social media kamu bareng kami
@@ -432,52 +525,62 @@ export default function Home() {
                 </svg>
               </div>
             </div>
-          </div>
+          </FadeIn>
         </section>
 
         {/* Case Study Section */}
         <section id="case-studies" className="py-20 md:py-32">
-          <SectionHeading
-            title="Studi Kasus"
-            description="Lihat contoh nyata hasil dari klien yang sudah pakai layanan SMM kami."
-          />
+          <FadeIn>
+            <SectionHeading
+              title="Studi Kasus"
+              description="Lihat contoh nyata hasil dari klien yang sudah pakai layanan SMM kami."
+            />
+          </FadeIn>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
-            <TestimonialCard
-              stat="+300%"
-              statLabel="Followers Instagram"
-              quote="Followers dan engagement Instagram toko online kami naik drastis dalam beberapa hari, prosesnya juga cepat dan aman."
-              name="Dinda Pratiwi"
-              role="Owner"
-              company="Online Shop"
-            />
-            <TestimonialCard
-              stat="-70%"
-              statLabel="Biaya promosi"
-              quote="Dibanding pakai jasa promosi manual, SuntikSosmed jauh lebih murah dan hasilnya lebih terukur untuk kampanye TikTok kami."
-              name="Aditya Nugroho"
-              role="Marketing Lead"
-              company="UMKM Fashion"
-            />
-            <TestimonialCard
-              stat="+150%"
-              statLabel="Engagement TikTok"
-              quote="View dan like konten TikTok kami naik signifikan, bantu banget buat naikin reach organik ke FYP."
-              name="Rahmat Hidayat"
-              role="Content Creator"
-              company="Digital Agency"
-            />
+            <FadeIn delay={0}>
+              <TestimonialCard
+                stat="+300%"
+                statLabel="Followers Instagram"
+                quote="Followers dan engagement Instagram toko online kami naik drastis dalam beberapa hari, prosesnya juga cepat dan aman."
+                name="Dinda Pratiwi"
+                role="Owner"
+                company="Online Shop"
+              />
+            </FadeIn>
+            <FadeIn delay={80}>
+              <TestimonialCard
+                stat="-70%"
+                statLabel="Biaya promosi"
+                quote="Dibanding pakai jasa promosi manual, SuntikSosmed jauh lebih murah dan hasilnya lebih terukur untuk kampanye TikTok kami."
+                name="Aditya Nugroho"
+                role="Marketing Lead"
+                company="UMKM Fashion"
+              />
+            </FadeIn>
+            <FadeIn delay={160}>
+              <TestimonialCard
+                stat="+150%"
+                statLabel="Engagement TikTok"
+                quote="View dan like konten TikTok kami naik signifikan, bantu banget buat naikin reach organik ke FYP."
+                name="Rahmat Hidayat"
+                role="Content Creator"
+                company="Digital Agency"
+              />
+            </FadeIn>
           </div>
         </section>
 
         {/* FAQ Section */}
         <section id="faq" className="py-20 md:py-32">
-          <SectionHeading
-            title="FAQ"
-            description="Pertanyaan yang paling sering ditanyakan soal layanan, keamanan, dan pembayaran."
-          />
+          <FadeIn>
+            <SectionHeading
+              title="FAQ"
+              description="Pertanyaan yang paling sering ditanyakan soal layanan, keamanan, dan pembayaran."
+            />
+          </FadeIn>
 
-          <div className="bg-[#191A19] border border-white/10 rounded-[40px] px-8 md:px-16 py-4">
+          <FadeIn delay={100} className="bg-[#191A19] border border-white/10 rounded-[40px] px-8 md:px-16 py-4">
             {faqs.map((faq, i) => (
               <FaqItem
                 key={i}
@@ -487,7 +590,7 @@ export default function Home() {
                 onToggle={() => setOpenFaq(openFaq === i ? -1 : i)}
               />
             ))}
-          </div>
+          </FadeIn>
         </section>
 
       </main>
@@ -514,6 +617,7 @@ export default function Home() {
               <a href="#services" className="text-gray-300 hover:text-[#B9FF66] transition-colors text-sm w-fit">Layanan</a>
               <a href="#how-it-works" className="text-gray-300 hover:text-[#B9FF66] transition-colors text-sm w-fit">Cara Kerja</a>
               <a href="#api" className="text-gray-300 hover:text-[#B9FF66] transition-colors text-sm w-fit">API</a>
+              <a href="#referral" className="text-gray-300 hover:text-[#B9FF66] transition-colors text-sm w-fit">Referral</a>
               <a href="#case-studies" className="text-gray-300 hover:text-[#B9FF66] transition-colors text-sm w-fit">Studi Kasus</a>
               <a href="#faq" className="text-gray-300 hover:text-[#B9FF66] transition-colors text-sm w-fit">FAQ</a>
             </div>
