@@ -35,12 +35,14 @@ import {
     Newspaper,
     ArrowDownToLine,
     Loader2,
+    RotateCcw,
 } from 'lucide-react';
 import OrderForm from '../../components/OrderForm';
 import { createClient } from '../../lib/supabase/client';
 import { loadReferralKomisiPersen } from '../../data/pricingSettings';
 import RiwayatPesananSection from '../../components/RiwayatPesananSection';
 import SaldoSection from '../../components/SaldoSection';
+import RefundSection from '../../components/RefundSection';
 import TiketSection from '../../components/TiketSection';
 import DaftarLayananSection from '../../components/DaftarLayananSection';
 import BeritaSection from '../../components/BeritaSection';
@@ -50,6 +52,7 @@ const navItems = [
     { label: 'Pesan Layanan', icon: ShoppingCart },
     { label: 'Riwayat Pesanan', icon: History },
     { label: 'Saldo & Deposit', icon: Wallet },
+    { label: 'Refund', icon: RotateCcw },
     { label: 'Tiket', icon: Ticket },
     { label: 'Daftar Layanan', icon: List },
     { label: 'Berita', icon: Newspaper },
@@ -713,19 +716,21 @@ export default function DashboardPage() {
                                             ? 'Semua pesanan yang pernah kamu buat.'
                                             : activeMenu === 'Saldo & Deposit'
                                                 ? 'Kelola saldo dan lihat riwayat transaksi kamu.'
-                                                : activeMenu === 'Tiket'
-                                                    ? 'Butuh bantuan? Buat tiket dan tim kami akan membalas secepatnya.'
-                                                    : activeMenu === 'Daftar Layanan'
-                                                        ? 'Lihat semua layanan dan harga yang tersedia.'
-                                                        : activeMenu === 'Berita'
-                                                            ? 'Update dan pengumuman terbaru dari SuntikSosmed.'
-                                                            : activeMenu === 'Referral'
-                                                                ? 'Ajak teman pakai SuntikSosmed dan dapatkan komisi.'
-                                                                : activeMenu === 'API'
-                                                                    ? 'Kelola API key untuk integrasi ke sistem kamu sendiri.'
-                                                                    : activeMenu === 'Pengaturan'
-                                                                        ? 'Kelola profil, keamanan, dan preferensi akun.'
-                                                                        : ''}
+                                                : activeMenu === 'Refund'
+                                                    ? 'Lihat status pengembalian saldo dari pesanan yang gagal.'
+                                                    : activeMenu === 'Tiket'
+                                                        ? 'Butuh bantuan? Buat tiket dan tim kami akan membalas secepatnya.'
+                                                        : activeMenu === 'Daftar Layanan'
+                                                            ? 'Lihat semua layanan dan harga yang tersedia.'
+                                                            : activeMenu === 'Berita'
+                                                                ? 'Update dan pengumuman terbaru dari SuntikSosmed.'
+                                                                : activeMenu === 'Referral'
+                                                                    ? 'Ajak teman pakai SuntikSosmed dan dapatkan komisi.'
+                                                                    : activeMenu === 'API'
+                                                                        ? 'Kelola API key untuk integrasi ke sistem kamu sendiri.'
+                                                                        : activeMenu === 'Pengaturan'
+                                                                            ? 'Kelola profil, keamanan, dan preferensi akun.'
+                                                                            : ''}
                             </p>
                         </div>
                     </div>
@@ -819,6 +824,8 @@ export default function DashboardPage() {
                         <RiwayatPesananSection orders={orders} historyNow={historyNow} />
                     ) : activeMenu === 'Saldo & Deposit' ? (
                         <SaldoSection balance={balance} />
+                    ) : activeMenu === 'Refund' ? (
+                        <RefundSection />
                     ) : activeMenu === 'Tiket' ? (
                         <TiketSection />
                     ) : activeMenu === 'Daftar Layanan' ? (

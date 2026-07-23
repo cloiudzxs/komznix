@@ -1,35 +1,40 @@
+// Simpan sebagai: data/serviceOverrides.js (ganti file lama)
+//
 // Daftar ID layanan yang dinonaktifkan admin lewat halaman Kelola Layanan.
-// Dibaca lagi oleh OrderForm & DaftarLayananSection di sisi pelanggan buat
-// nyaring layanan yang gak boleh ditampilkan. Masih lewat localStorage (jadi
-// baru "nyambung" kalau admin & pelanggan buka di browser yang sama) —
-// begitu backend ada, ganti jadi kolom `aktif` di tabel `services`.
+// Sekarang beneran nyambung lewat Supabase (tabel `disabled_services`) --
+// bukan localStorage lagi, jadi admin nonaktifin di satu tempat langsung
+// kefilter buat semua pelanggan.
 
-const DISABLED_SERVICES_KEY = 'suntik_disabled_services';
-
-export function loadDisabledServiceIds() {
-    if (typeof window === 'undefined') return [];
+export async function loadDisabledServiceIds() {
     try {
-        const raw = window.localStorage.getItem(DISABLED_SERVICES_KEY);
-        return raw ? JSON.parse(raw) : [];
+        const res = await fetch('/api/services/disabled');
+        const data = await res.json();
+        if (!res.ok || data.error) return [];
+        return Array.isArray(data.ids) ? data.ids.map(String) : [];
     } catch {
         return [];
     }
 }
 
-export function saveDisabledServiceIds(ids) {
-    try {
-        window.localStorage.setItem(DISABLED_SERVICES_KEY, JSON.stringify(ids));
-    } catch {
-        // localStorage penuh/diblokir — pengaturan tetap kepakai untuk sesi ini saja
-    }
-}
-
-export function toggleDisabledServiceId(id, currentDisabledIds) {
+// disable=true buat nonaktifin, false buat aktifin lagi. Butuh sesi admin
+// (route /api/admin/services pakai verifyAdmin), jadi cuma dipanggil dari
+// ServicesManager (halaman admin).
+export async function toggleDisabledServiceId(id, currentDisabledIds, disable) {
     const idStr = String(id);
+    const res = await fetch('/api/admin/services', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ serviceId: idStr, disabled: disable }),
+    });
+    const data = await res.json();
+    if (!res.ok || data.error) {
+        throw new Error(data.error || 'Gagal mengubah status layanan.');
+    }
+
     const exists = currentDisabledIds.includes(idStr);
-    const next = exists ? currentDisabledIds.filter((x) => x !== idStr) : [...currentDisabledIds, idStr];
-    saveDisabledServiceIds(next);
-    return next;
+    if (disable && !exists) return [...currentDisabledIds, idStr];
+    if (!disable && exists) return currentDisabledIds.filter((x) => x !== idStr);
+    return currentDisabledIds;
 }
 
 // Buang layanan yang dinonaktifkan dari struktur platform -> kategori ->

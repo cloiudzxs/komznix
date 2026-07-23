@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Wallet, QrCode, Loader2, CheckCircle2, X, Clock, MessageCircle, ExternalLink, Plus, XCircle } from 'lucide-react';
+import { Wallet, QrCode, Loader2, CheckCircle2, X, Clock, MessageCircle, ExternalLink, Plus, XCircle, ShoppingCart } from 'lucide-react';
 import { createClient } from '../lib/supabase/client';
 
 function formatRupiah(value) {
@@ -39,6 +39,13 @@ const transactionStatusStyle = {
     'Menunggu Konfirmasi': 'bg-blue-500/10 text-blue-400',
 };
 
+const orderStatusStyle = {
+    Selesai: 'bg-[#B9FF66]/10 text-[#B9FF66]',
+    Diproses: 'bg-blue-500/10 text-blue-400',
+    Pending: 'bg-gray-500/10 text-gray-400',
+    Gagal: 'bg-red-500/10 text-red-400',
+};
+
 export default function SaldoSection({ balance, onAddBalance }) {
     const [supabase] = useState(() => createClient());
     const [showTopUp, setShowTopUp] = useState(false);
@@ -50,6 +57,9 @@ export default function SaldoSection({ balance, onAddBalance }) {
     const [error, setError] = useState('');
     const [transactions, setTransactions] = useState([]);
     const [loadingHistory, setLoadingHistory] = useState(true);
+    const [usageHistory, setUsageHistory] = useState([]);
+    const [loadingUsage, setLoadingUsage] = useState(true);
+    const [activeHistoryTab, setActiveHistoryTab] = useState('topup'); // 'topup' | 'usage'
 
     const nominal = selectedNominal ?? (Number(customNominal) || 0);
 
@@ -60,8 +70,22 @@ export default function SaldoSection({ balance, onAddBalance }) {
         setLoadingHistory(false);
     }
 
+    // Riwayat pemakaian saldo (dari pesanan) — TERPISAH dari Riwayat Transaksi
+    // (top up) di atas, sengaja gak digabung. Refund juga sengaja gak
+    // ditampilkan di sini (bakal jadi fitur/tampilan sendiri nanti).
+    async function loadUsageHistory() {
+        setLoadingUsage(true);
+        const { data } = await supabase
+            .from('orders')
+            .select('id, layanan, harga, status, created_at')
+            .order('created_at', { ascending: false });
+        setUsageHistory(data || []);
+        setLoadingUsage(false);
+    }
+
     useEffect(() => {
         loadHistory();
+        loadUsageHistory();
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
@@ -211,59 +235,130 @@ export default function SaldoSection({ balance, onAddBalance }) {
                 </button>
             </div>
 
-            {/* Riwayat transaksi */}
+            {/* Riwayat Transaksi (top up) & Riwayat Pemakaian Saldo — 1 card,
+                dipisah lewat tab pill. Refund gak masuk sini, itu bakal jadi
+                fitur/tampilan sendiri. */}
             <div className="bg-[#191A19] border border-white/10 rounded-2xl overflow-hidden">
-                <div className="p-6 border-b border-white/10">
-                    <h3 className="text-lg font-bold">Riwayat Transaksi</h3>
+                <div className="p-6 border-b border-white/10 flex items-center justify-between gap-4 flex-wrap">
+                    <h3 className="text-lg font-bold">Riwayat</h3>
+                    <div className="inline-flex items-center gap-1 bg-[#111111] border border-white/10 rounded-full p-1">
+                        <button
+                            type="button"
+                            onClick={() => setActiveHistoryTab('topup')}
+                            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${activeHistoryTab === 'topup'
+                                ? 'bg-[#B9FF66] text-black'
+                                : 'text-gray-400 hover:text-white'
+                                }`}
+                        >
+                            Top Up ({transactions.length})
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => setActiveHistoryTab('usage')}
+                            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${activeHistoryTab === 'usage'
+                                ? 'bg-[#B9FF66] text-black'
+                                : 'text-gray-400 hover:text-white'
+                                }`}
+                        >
+                            Pemakaian ({usageHistory.length})
+                        </button>
+                    </div>
                 </div>
-                {loadingHistory ? (
+
+                {activeHistoryTab === 'topup' ? (
+                    loadingHistory ? (
+                        <div className="p-10 flex flex-col items-center gap-3 text-center">
+                            <Loader2 className="w-6 h-6 text-[#B9FF66] animate-spin" />
+                            <p className="text-sm text-gray-500">Memuat riwayat...</p>
+                        </div>
+                    ) : transactions.length === 0 ? (
+                        <div className="p-10 text-center text-sm text-gray-500">Belum ada riwayat transaksi.</div>
+                    ) : (
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm">
+                                <thead>
+                                    <tr className="text-gray-400 text-left border-b border-white/10">
+                                        <th className="px-6 py-3 font-medium">Tipe</th>
+                                        <th className="px-6 py-3 font-medium hidden sm:table-cell">Metode</th>
+                                        <th className="px-6 py-3 font-medium">Jumlah</th>
+                                        <th className="px-6 py-3 font-medium">Status</th>
+                                        <th className="px-6 py-3 font-medium hidden md:table-cell">Waktu</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {transactions.map((trx) => (
+                                        <tr key={trx.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                                            <td className="px-6 py-4">
+                                                <p className="font-medium flex items-center gap-1.5">
+                                                    {trx.status === 'Berhasil' ? (
+                                                        <CheckCircle2 className="w-3.5 h-3.5 text-[#B9FF66] shrink-0" />
+                                                    ) : trx.status === 'Kedaluwarsa' ? (
+                                                        <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                                                    ) : (
+                                                        <Clock className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+                                                    )}
+                                                    Top Up
+                                                </p>
+                                                <p className="text-gray-500 text-xs mt-0.5 sm:hidden">{trx.metode}</p>
+                                            </td>
+                                            <td className="px-6 py-4 text-gray-400 hidden sm:table-cell">{trx.metode}</td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <span className="text-[#B9FF66] font-bold">+{formatRupiah(trx.nominal)}</span>
+                                            </td>
+                                            <td className="px-6 py-4 whitespace-nowrap">
+                                                <span
+                                                    className={`text-xs font-medium px-2.5 py-1 rounded-full ${transactionStatusStyle[trx.status]}`}
+                                                >
+                                                    {trx.status}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-gray-400 hidden md:table-cell whitespace-nowrap">
+                                                {formatTanggal(trx.created_at)}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    )
+                ) : loadingUsage ? (
                     <div className="p-10 flex flex-col items-center gap-3 text-center">
                         <Loader2 className="w-6 h-6 text-[#B9FF66] animate-spin" />
                         <p className="text-sm text-gray-500">Memuat riwayat...</p>
                     </div>
-                ) : transactions.length === 0 ? (
-                    <div className="p-10 text-center text-sm text-gray-500">Belum ada riwayat transaksi.</div>
+                ) : usageHistory.length === 0 ? (
+                    <div className="p-10 text-center text-sm text-gray-500">Belum ada riwayat pemakaian saldo.</div>
                 ) : (
                     <div className="overflow-x-auto">
                         <table className="w-full text-sm">
                             <thead>
                                 <tr className="text-gray-400 text-left border-b border-white/10">
-                                    <th className="px-6 py-3 font-medium">Tipe</th>
-                                    <th className="px-6 py-3 font-medium hidden sm:table-cell">Metode</th>
+                                    <th className="px-6 py-3 font-medium">Layanan</th>
                                     <th className="px-6 py-3 font-medium">Jumlah</th>
                                     <th className="px-6 py-3 font-medium">Status</th>
                                     <th className="px-6 py-3 font-medium hidden md:table-cell">Waktu</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {transactions.map((trx) => (
-                                    <tr key={trx.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                                {usageHistory.map((o) => (
+                                    <tr key={o.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
                                         <td className="px-6 py-4">
                                             <p className="font-medium flex items-center gap-1.5">
-                                                {trx.status === 'Berhasil' ? (
-                                                    <CheckCircle2 className="w-3.5 h-3.5 text-[#B9FF66] shrink-0" />
-                                                ) : trx.status === 'Kedaluwarsa' ? (
-                                                    <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
-                                                ) : (
-                                                    <Clock className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                                                )}
-                                                Top Up
+                                                <ShoppingCart className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                                {o.layanan}
                                             </p>
-                                            <p className="text-gray-500 text-xs mt-0.5 sm:hidden">{trx.metode}</p>
-                                        </td>
-                                        <td className="px-6 py-4 text-gray-400 hidden sm:table-cell">{trx.metode}</td>
-                                        <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className="text-[#B9FF66] font-bold">+{formatRupiah(trx.nominal)}</span>
+                                            <p className="text-gray-500 text-xs mt-0.5 md:hidden">{formatTanggal(o.created_at)}</p>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <span
-                                                className={`text-xs font-medium px-2.5 py-1 rounded-full ${transactionStatusStyle[trx.status]}`}
-                                            >
-                                                {trx.status}
+                                            <span className="text-red-400 font-bold">-{formatRupiah(o.harga)}</span>
+                                        </td>
+                                        <td className="px-6 py-4 whitespace-nowrap">
+                                            <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${orderStatusStyle[o.status] || 'bg-gray-500/10 text-gray-400'}`}>
+                                                {o.status}
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-gray-400 hidden md:table-cell whitespace-nowrap">
-                                            {formatTanggal(trx.created_at)}
+                                            {formatTanggal(o.created_at)}
                                         </td>
                                     </tr>
                                 ))}

@@ -1,3 +1,6 @@
+// Simpan sebagai: components/admin/ServicesManager.jsx (timpa file lama,
+// sesuaikan path import kalau lokasinya beda)
+
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
@@ -15,6 +18,7 @@ export default function ServicesManager() {
   const [disabledIds, setDisabledIds] = useState([]);
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(1);
+  const [togglingId, setTogglingId] = useState(null);
 
   async function load() {
     setLoading(true);
@@ -24,9 +28,12 @@ export default function ServicesManager() {
       const settingsData = await settingsRes.json();
       const kursUsdIdr = Number(settingsData?.settings?.kurs_usd_idr) || 15800;
       const markupPersen = Number(settingsData?.settings?.markup_persen) || 20;
-      const grouped = await fetchLiveCatalog(kursUsdIdr, markupPersen);
+      const [grouped, disabled] = await Promise.all([
+        fetchLiveCatalog(kursUsdIdr, markupPersen),
+        loadDisabledServiceIds(),
+      ]);
       setPlatforms(grouped);
-      setDisabledIds(loadDisabledServiceIds());
+      setDisabledIds(disabled);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -50,16 +57,24 @@ export default function ServicesManager() {
     return list;
   }, [platforms]);
 
-  function handleToggleAktif(id) {
-    setDisabledIds((prev) => toggleDisabledServiceId(id, prev));
+  async function handleToggleAktif(id) {
+    const idStr = String(id);
+    const isCurrentlyDisabled = disabledIds.includes(idStr);
+    setTogglingId(idStr);
+    try {
+      const next = await toggleDisabledServiceId(id, disabledIds, !isCurrentlyDisabled);
+      setDisabledIds(next);
+    } catch (err) {
+      setError(err.message);
+    } finally {
+      setTogglingId(null);
+    }
   }
 
   const filtered = rows.filter(
     (r) => !query.trim() || r.name.toLowerCase().includes(query.toLowerCase()) || String(r.id).includes(query)
   );
 
-  // Reset ke halaman 1 tiap kali pencarian berubah, biar gak nyangkut di
-  // halaman yang udah kosong.
   useEffect(() => {
     setPage(1);
   }, [query]);
@@ -80,9 +95,8 @@ export default function ServicesManager() {
 
       <p className="text-sm text-gray-400 -mt-2">
         Katalog ini live dari SMMSOC. Nonaktifkan layanan di sini kalau providernya sedang bermasalah, biar
-        gak muncul di halaman Pesan Layanan & Daftar Layanan pelanggan. Status nonaktif ini masih lewat
-        localStorage (baru nyambung kalau admin & pelanggan buka di browser yang sama) — begitu backend ada,
-        ganti jadi kolom di database.
+        gak muncul di halaman Pesan Layanan & Daftar Layanan pelanggan. Status ini tersimpan di database,
+        jadi langsung berlaku untuk semua pelanggan di device manapun.
       </p>
 
       <div className="flex items-center gap-3">
@@ -135,6 +149,7 @@ export default function ServicesManager() {
               <tbody>
                 {pagedRows.map((r) => {
                   const isDisabled = disabledIds.includes(String(r.id));
+                  const isBusy = togglingId === String(r.id);
                   return (
                     <tr key={r.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
                       <td className="px-6 py-4 font-mono text-gray-400 whitespace-nowrap">{r.id}</td>
@@ -150,12 +165,13 @@ export default function ServicesManager() {
                       <td className="px-6 py-4">
                         <button
                           onClick={() => handleToggleAktif(r.id)}
-                          className={`text-xs font-medium px-3 py-1.5 rounded-full transition-colors ${!isDisabled
+                          disabled={isBusy}
+                          className={`text-xs font-medium px-3 py-1.5 rounded-full transition-colors disabled:opacity-50 ${!isDisabled
                             ? 'bg-[#FFB800]/10 text-[#FFB800] hover:bg-[#FFB800]/20'
                             : 'bg-gray-500/10 text-gray-400 hover:bg-gray-500/20'
                             }`}
                         >
-                          {!isDisabled ? 'Aktif' : 'Nonaktif'}
+                          {isBusy ? '...' : !isDisabled ? 'Aktif' : 'Nonaktif'}
                         </button>
                       </td>
                     </tr>

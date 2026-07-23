@@ -136,7 +136,7 @@ function OrderDetail({ order, now, onBack, onCopy, copied }) {
                         </div>
                     )}
 
-                    <div className="grid grid-cols-2 gap-4 text-sm bg-[#111111] border border-white/10 rounded-xl p-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm bg-[#111111] border border-white/10 rounded-xl p-4">
                         <div>
                             <p className="text-gray-500 text-xs mb-1">Target</p>
                             <p className="truncate">{order.target}</p>
@@ -193,10 +193,10 @@ export default function RiwayatPesananSection({ orders, historyNow }) {
                     <thead>
                         <tr className="text-gray-400 text-left border-b border-white/10">
                             <th className="px-6 py-3 font-medium">Layanan</th>
-                            <th className="px-6 py-3 font-medium">Target</th>
+                            <th className="px-6 py-3 font-medium hidden md:table-cell">Target</th>
                             <th className="px-6 py-3 font-medium">Jumlah</th>
                             <th className="px-6 py-3 font-medium">Status</th>
-                            <th className="px-6 py-3 font-medium">Waktu</th>
+                            <th className="px-6 py-3 font-medium hidden sm:table-cell">Waktu</th>
                             <th className="px-6 py-3 font-medium"></th>
                         </tr>
                     </thead>
@@ -209,16 +209,19 @@ export default function RiwayatPesananSection({ orders, historyNow }) {
                             >
                                 <td className="px-6 py-4 font-medium whitespace-nowrap">
                                     <p>{order.layanan}</p>
-                                    <p className="text-gray-500 text-xs mt-0.5">{order.id}</p>
+                                    <p className="text-gray-500 text-xs mt-0.5">
+                                        {order.id}
+                                        <span className="sm:hidden"> · {formatRelativeTime(order.timestamp, historyNow)}</span>
+                                    </p>
                                 </td>
-                                <td className="px-6 py-4 text-gray-400 max-w-[200px] truncate">{order.target}</td>
+                                <td className="px-6 py-4 text-gray-400 max-w-[200px] truncate hidden md:table-cell">{order.target}</td>
                                 <td className="px-6 py-4 whitespace-nowrap">{order.jumlah.toLocaleString('id-ID')}</td>
                                 <td className="px-6 py-4 whitespace-nowrap">
                                     <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${statusStyle[order.status] || 'bg-red-500/10 text-red-400'}`}>
                                         {order.status}
                                     </span>
                                 </td>
-                                <td className="px-6 py-4 text-gray-400 whitespace-nowrap">
+                                <td className="px-6 py-4 text-gray-400 whitespace-nowrap hidden sm:table-cell">
                                     {formatRelativeTime(order.timestamp, historyNow)}
                                 </td>
                                 <td className="px-6 py-4">
@@ -227,7 +230,7 @@ export default function RiwayatPesananSection({ orders, historyNow }) {
                                             e.stopPropagation();
                                             handleCopyOrderId(order);
                                         }}
-                                        className={copiedOrderId === order.id ? 'text-[#B9FF66]' : 'text-gray-400 hover:text-[#B9FF66]'}
+                                        className={`p-2 -m-2 ${copiedOrderId === order.id ? 'text-[#B9FF66]' : 'text-gray-400 hover:text-[#B9FF66]'}`}
                                     >
                                         {copiedOrderId === order.id ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                                     </button>

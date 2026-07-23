@@ -105,7 +105,8 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
             const kursUsdIdr = await loadKursUsdIdr();
             const markupPersen = await loadMarkupPersen();
             const rawGrouped = await fetchLiveCatalog(kursUsdIdr, markupPersen);
-            const grouped = filterDisabledFromCatalog(rawGrouped, loadDisabledServiceIds());
+            const disabledIds = await loadDisabledServiceIds();
+            const grouped = filterDisabledFromCatalog(rawGrouped, disabledIds);
             setPlatforms(grouped);
             if (grouped.length > 0) setPlatformKey(grouped[0].key);
         } catch (err) {
