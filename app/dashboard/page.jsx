@@ -124,10 +124,9 @@ function maskApiKey(key) {
 }
 
 // --- Broadcast dari admin ---
-// Dibaca dari localStorage yang sama dipakai BroadcastManager di panel admin.
-// Ini cuma jalan kalau admin & pelanggan buka di browser yang sama (buat demo) —
-// begitu backend ada, ganti jadi tabel `notifications` yang di-fetch dari server.
-const BROADCAST_STORAGE_KEY = 'suntik_broadcasts';
+// Dibaca dari /api/broadcasts (tabel `broadcasts` di Supabase), bukan
+// localStorage lagi. BROADCAST_SEEN_KEY tetep localStorage -- itu cuma
+// nandain "udah dibaca di browser ini", bukan sumber datanya sendiri.
 const BROADCAST_SEEN_KEY = 'suntik_broadcasts_seen_at';
 
 const BROADCAST_TIPE_STYLE = {
@@ -136,11 +135,12 @@ const BROADCAST_TIPE_STYLE = {
     Peringatan: { icon: AlertTriangle, style: 'bg-red-500/10 text-red-400' },
 };
 
-function loadBroadcasts() {
-    if (typeof window === 'undefined') return [];
+async function loadBroadcasts() {
     try {
-        const raw = window.localStorage.getItem(BROADCAST_STORAGE_KEY);
-        return raw ? JSON.parse(raw) : [];
+        const res = await fetch('/api/broadcasts');
+        const data = await res.json();
+        if (!res.ok || data.error) return [];
+        return Array.isArray(data.broadcasts) ? data.broadcasts : [];
     } catch {
         return [];
     }
@@ -409,11 +409,11 @@ export default function DashboardPage() {
                 })
                 .catch((err) => console.error('Gagal sync status pesanan:', err.message));
 
-            const loaded = loadBroadcasts();
+            const loaded = await loadBroadcasts();
             setBroadcasts(loaded);
             if (loaded.length > 0) {
                 const seenAt = Number(localStorage.getItem(BROADCAST_SEEN_KEY) || 0);
-                setHasUnseenBroadcast(loaded[0].timestamp > seenAt);
+                setHasUnseenBroadcast(new Date(loaded[0].created_at).getTime() > seenAt);
             }
 
             setAuthChecked(true);
@@ -766,7 +766,7 @@ export default function DashboardPage() {
                                                         <div className="min-w-0">
                                                             <p className="text-sm font-medium truncate">{b.judul}</p>
                                                             <p className="text-gray-400 text-xs mt-0.5">{b.isi}</p>
-                                                            <p className="text-gray-600 text-xs mt-1">{formatBroadcastTanggal(b.timestamp)}</p>
+                                                            <p className="text-gray-600 text-xs mt-1">{formatBroadcastTanggal(b.created_at)}</p>
                                                         </div>
                                                     </div>
                                                 );

@@ -1,27 +1,15 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Newspaper, Megaphone } from 'lucide-react';
+import { Newspaper, Megaphone, Loader2, AlertTriangle } from 'lucide-react';
 import { renderBeritaContent } from '../data/beritaFormat';
 
-// Sumber datanya terpisah dari broadcast/notifikasi — ditulis lewat panel
-// admin "Kelola Berita". Ini masih lewat localStorage (cuma nyambung di
-// browser yang sama); begitu backend ada, ganti jadi fetch dari tabel
-// `berita` di database.
-const BERITA_STORAGE_KEY = 'suntik_berita';
+// Sumber datanya ditulis lewat panel admin "Kelola Berita" -- sekarang
+// beneran nyambung ke Supabase (tabel `berita`) lewat /api/berita, bukan
+// localStorage lagi.
 
-function loadBerita() {
-    if (typeof window === 'undefined') return [];
-    try {
-        const raw = window.localStorage.getItem(BERITA_STORAGE_KEY);
-        return raw ? JSON.parse(raw) : [];
-    } catch {
-        return [];
-    }
-}
-
-function formatTanggal(timestamp) {
-    const date = new Date(timestamp);
+function formatTanggal(iso) {
+    const date = new Date(iso);
     const dd = String(date.getDate()).padStart(2, '0');
     const month = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des'][date.getMonth()];
     const hh = String(date.getHours()).padStart(2, '0');
@@ -35,9 +23,25 @@ function formatTanggal(timestamp) {
 
 export default function BeritaSection() {
     const [berita, setBerita] = useState([]);
+    const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
 
     useEffect(() => {
-        setBerita(loadBerita());
+        async function load() {
+            setLoading(true);
+            setError('');
+            try {
+                const res = await fetch('/api/berita');
+                const data = await res.json();
+                if (!res.ok || data.error) throw new Error(data.error || 'Gagal memuat berita.');
+                setBerita(data.berita || []);
+            } catch (err) {
+                setError(err.message);
+            } finally {
+                setLoading(false);
+            }
+        }
+        load();
     }, []);
 
     return (
@@ -47,7 +51,17 @@ export default function BeritaSection() {
                 <h2 className="text-lg font-bold">Berita & Update</h2>
             </div>
 
-            {berita.length === 0 ? (
+            {loading ? (
+                <div className="bg-[#191A19] border border-white/10 rounded-2xl p-10 flex flex-col items-center gap-3 text-center">
+                    <Loader2 className="w-6 h-6 text-[#B9FF66] animate-spin" />
+                    <p className="text-sm text-gray-500">Memuat berita...</p>
+                </div>
+            ) : error ? (
+                <div className="bg-[#191A19] border border-red-500/30 rounded-2xl p-10 flex flex-col items-center gap-3 text-center">
+                    <AlertTriangle className="w-8 h-8 text-red-400" />
+                    <p className="text-sm text-red-400">{error}</p>
+                </div>
+            ) : berita.length === 0 ? (
                 <div className="bg-[#191A19] border border-white/10 rounded-2xl p-10 flex flex-col items-center gap-3 text-center">
                     <Newspaper className="w-8 h-8 text-gray-600" />
                     <p className="text-sm text-gray-500">Belum ada berita atau update terbaru.</p>
@@ -61,7 +75,7 @@ export default function BeritaSection() {
                                     <Megaphone className="w-3.5 h-3.5" />
                                     {b.tipe || 'Pengumuman'}
                                 </span>
-                                <span className="text-xs text-gray-500">{formatTanggal(b.timestamp)}</span>
+                                <span className="text-xs text-gray-500">{formatTanggal(b.created_at)}</span>
                             </div>
                             <h3 className="font-bold">{b.judul}</h3>
                             <div className="flex flex-col gap-3">{renderBeritaContent(b.isi)}</div>

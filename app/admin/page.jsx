@@ -27,6 +27,7 @@ import {
     Server,
     Package,
     MessageCircle,
+    BarChart3,
 } from 'lucide-react';
 import OrdersManager from '../../components/admin/OrdersManager';
 import UsersManager from '../../components/admin/UsersManager';
@@ -38,9 +39,11 @@ import MarkupManager from '../../components/admin/MarkupManager';
 import ActivityLogManager from '../../components/admin/ActivityLogManager';
 import BroadcastManager from '../../components/admin/BroadcastManager';
 import BeritaManager from '../../components/admin/BeritaManager';
+import StatistikManager from '../../components/admin/StatistikManager';
 
 const navItems = [
     { label: 'Overview', icon: LayoutDashboard },
+    { label: 'Statistik', icon: BarChart3 },
     { label: 'Kelola Pesanan', icon: ClipboardList },
     { label: 'Kelola Pengguna', icon: Users },
     { label: 'Kelola Layanan', icon: Settings2 },
@@ -71,9 +74,11 @@ function buildTrendDataFromOrders(orders, days) {
         const dayEnd = new Date(dayStart);
         dayEnd.setDate(dayEnd.getDate() + 1);
 
+        // Pesanan Gagal sengaja DIKELUARIN -- gak representatif sebagai
+        // pendapatan/aktivitas beneran (biasanya direfund).
         const ordersInDay = orders.filter((o) => {
             const t = new Date(o.created_at).getTime();
-            return t >= dayStart.getTime() && t < dayEnd.getTime();
+            return t >= dayStart.getTime() && t < dayEnd.getTime() && o.status !== 'Gagal';
         });
 
         points.push({
@@ -218,13 +223,38 @@ const TrendChart = ({ data }) => {
                 <path d={pesananPath} fill="none" stroke="#4EA8FF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
 
                 {activeX !== null && (
-                    <line x1={activeX} x2={activeX} y1={padding.top} y2={baseY} stroke="#ffffff" strokeOpacity="0.15" strokeDasharray="4 4" />
+                    <line
+                        x1={activeX}
+                        x2={activeX}
+                        y1={padding.top}
+                        y2={baseY}
+                        stroke="#ffffff"
+                        strokeOpacity="0.15"
+                        strokeDasharray="4 4"
+                        className="transition-[x1,x2] duration-150 ease-out"
+                    />
                 )}
 
                 {hoverIndex !== null && (
                     <>
-                        <circle cx={pendapatanPoints[hoverIndex][0]} cy={pendapatanPoints[hoverIndex][1]} r="5" fill="#FFB800" stroke="#111111" strokeWidth="2" />
-                        <circle cx={pesananPoints[hoverIndex][0]} cy={pesananPoints[hoverIndex][1]} r="5" fill="#4EA8FF" stroke="#111111" strokeWidth="2" />
+                        <circle
+                            cx={pendapatanPoints[hoverIndex][0]}
+                            cy={pendapatanPoints[hoverIndex][1]}
+                            r="5"
+                            fill="#FFB800"
+                            stroke="#111111"
+                            strokeWidth="2"
+                            className="transition-[cx,cy] duration-150 ease-out"
+                        />
+                        <circle
+                            cx={pesananPoints[hoverIndex][0]}
+                            cy={pesananPoints[hoverIndex][1]}
+                            r="5"
+                            fill="#4EA8FF"
+                            stroke="#111111"
+                            strokeWidth="2"
+                            className="transition-[cx,cy] duration-150 ease-out"
+                        />
                     </>
                 )}
 
@@ -239,7 +269,7 @@ const TrendChart = ({ data }) => {
 
             {active && activeX !== null && (
                 <div
-                    className="absolute top-0 pointer-events-none bg-[#191A19] border border-white/10 rounded-xl px-3 py-2 text-xs shadow-xl whitespace-nowrap z-10"
+                    className="absolute top-0 pointer-events-none bg-[#191A19] border border-white/10 rounded-xl px-3 py-2 text-xs shadow-xl whitespace-nowrap z-10 transition-all duration-150 ease-out"
                     style={{
                         left: `${tooltipLeftPct}%`,
                         transform:
@@ -433,13 +463,16 @@ export default function AdminPage() {
             .catch((err) => console.error('Gagal ambil data pesanan:', err.message));
     }, [authChecked]);
 
-    // Omset Kotor = total harga SEMUA pesanan (apapun statusnya).
+    // Omset Kotor = total harga SEMUA pesanan KECUALI yang Gagal (biasanya
+    // direfund, jadi gak representatif sebagai omset beneran).
     // Omset Bersih = total PROFIT (harga jual − estimasi harga modal) tapi
     // cuma dari pesanan yang statusnya "Selesai" — pesanan yang gagal/masih
     // proses gak kehitung sebagai profit real.
     useEffect(() => {
         if (markupPersen == null) return;
-        const kotor = allOrders.reduce((sum, o) => sum + Number(o.harga || 0), 0);
+        const kotor = allOrders
+            .filter((o) => o.status !== 'Gagal')
+            .reduce((sum, o) => sum + Number(o.harga || 0), 0);
         const bersih = allOrders
             .filter((o) => o.status === 'Selesai')
             .reduce((sum, o) => {
@@ -575,7 +608,9 @@ export default function AdminPage() {
                 </header>
 
                 <main className="p-6 lg:p-10 flex flex-col gap-8">
-                    {activeMenu === 'Kelola Pesanan' ? (
+                    {activeMenu === 'Statistik' ? (
+                        <StatistikManager />
+                    ) : activeMenu === 'Kelola Pesanan' ? (
                         <OrdersManager />
                     ) : activeMenu === 'Kelola Pengguna' ? (
                         <UsersManager />

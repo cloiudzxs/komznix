@@ -241,11 +241,11 @@ export default function SaldoSection({ balance, onAddBalance }) {
             <div className="bg-[#191A19] border border-white/10 rounded-2xl overflow-hidden">
                 <div className="p-6 border-b border-white/10 flex items-center justify-between gap-4 flex-wrap">
                     <h3 className="text-lg font-bold">Riwayat</h3>
-                    <div className="inline-flex items-center gap-1 bg-[#111111] border border-white/10 rounded-full p-1">
+                    <div className="flex items-center gap-1 bg-[#111111] border border-white/10 rounded-xl p-1">
                         <button
                             type="button"
                             onClick={() => setActiveHistoryTab('topup')}
-                            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${activeHistoryTab === 'topup'
+                            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeHistoryTab === 'topup'
                                 ? 'bg-[#B9FF66] text-black'
                                 : 'text-gray-400 hover:text-white'
                                 }`}
@@ -255,7 +255,7 @@ export default function SaldoSection({ balance, onAddBalance }) {
                         <button
                             type="button"
                             onClick={() => setActiveHistoryTab('usage')}
-                            className={`px-4 py-1.5 rounded-full text-sm font-medium transition-colors ${activeHistoryTab === 'usage'
+                            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${activeHistoryTab === 'usage'
                                 ? 'bg-[#B9FF66] text-black'
                                 : 'text-gray-400 hover:text-white'
                                 }`}
