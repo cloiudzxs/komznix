@@ -28,6 +28,7 @@ import {
     Package,
     MessageCircle,
     BarChart3,
+    BookOpen,
 } from 'lucide-react';
 import OrdersManager from '../../components/admin/OrdersManager';
 import UsersManager from '../../components/admin/UsersManager';
@@ -39,6 +40,7 @@ import MarkupManager from '../../components/admin/MarkupManager';
 import ActivityLogManager from '../../components/admin/ActivityLogManager';
 import BroadcastManager from '../../components/admin/BroadcastManager';
 import BeritaManager from '../../components/admin/BeritaManager';
+import BlogManager from '../../components/admin/BlogManager';
 import StatistikManager from '../../components/admin/StatistikManager';
 
 const navItems = [
@@ -51,6 +53,7 @@ const navItems = [
     { label: 'Tiket Support', icon: MessageSquare },
     { label: 'Broadcast', icon: Megaphone },
     { label: 'Kelola Berita', icon: Newspaper },
+    { label: 'Blog', icon: BookOpen },
     { label: 'Referral', icon: Gift },
     { label: 'Markup', icon: Percent },
     { label: 'Log Aktivitas', icon: History },
@@ -624,6 +627,8 @@ export default function AdminPage() {
                         <BroadcastManager />
                     ) : activeMenu === 'Kelola Berita' ? (
                         <BeritaManager />
+                    ) : activeMenu === 'Blog' ? (
+                        <BlogManager />
                     ) : activeMenu === 'Referral' ? (
                         <ReferralManager />
                     ) : activeMenu === 'Markup' ? (
