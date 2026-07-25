@@ -4,6 +4,7 @@ import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { createAdminClient } from '../../../lib/supabase/admin';
 import { renderBlogContent, estimateReadMinutes } from '../../../data/blogFormat';
+import BlogViewTracker from '../../../components/BlogViewTracker';
 
 export const revalidate = 300;
 
@@ -77,6 +78,7 @@ export default async function BlogPostPage({ params }) {
                 <div className="mt-6 grid grid-cols-1 lg:grid-cols-3 gap-10">
                     <div className="lg:col-span-2 min-w-0">
                         <article>
+                            <BlogViewTracker slug={post.slug} />
                             {post.cover_image_url && (
                                 // eslint-disable-next-line @next/next/no-img-element
                                 <img

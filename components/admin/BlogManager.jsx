@@ -183,6 +183,31 @@ export default function BlogManager() {
                 sini, belum tampil ke publik.
             </p>
 
+            {!loading && !loadError && posts.length > 0 && (
+                <div className="flex items-center gap-4 flex-wrap">
+                    <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6 flex items-center gap-4 w-fit">
+                        <div className="w-10 h-10 rounded-xl bg-[#FFB800]/10 flex items-center justify-center">
+                            <Eye className="w-5 h-5 text-[#FFB800]" />
+                        </div>
+                        <div>
+                            <p className="text-gray-500 text-xs">Total Views (semua artikel)</p>
+                            <p className="text-xl font-bold">
+                                {posts.reduce((sum, p) => sum + (p.views || 0), 0).toLocaleString('id-ID')}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6 flex items-center gap-4 w-fit">
+                        <div className="w-10 h-10 rounded-xl bg-[#FFB800]/10 flex items-center justify-center">
+                            <Newspaper className="w-5 h-5 text-[#FFB800]" />
+                        </div>
+                        <div>
+                            <p className="text-gray-500 text-xs">Artikel Publik</p>
+                            <p className="text-xl font-bold">{posts.filter((p) => p.status === 'published').length}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             {showForm && (
                 <form className="bg-[#191A19] border border-white/10 rounded-2xl p-6 flex flex-col gap-4">
                     <div className="flex items-center justify-between">
@@ -351,8 +376,16 @@ export default function BlogManager() {
                                     <div className="min-w-0">
                                         <p className="text-sm font-medium">{p.title}</p>
                                         <p className="text-gray-500 text-xs mt-0.5 font-mono">/blog/{p.slug}</p>
-                                        <p className="text-gray-600 text-xs mt-1">
-                                            {p.status === 'published' ? `Terbit ${formatTanggal(p.published_at)}` : `Diubah ${formatTanggal(p.updated_at)}`}
+                                        <p className="text-gray-600 text-xs mt-1 flex items-center gap-3 flex-wrap">
+                                            <span>
+                                                {p.status === 'published' ? `Terbit ${formatTanggal(p.published_at)}` : `Diubah ${formatTanggal(p.updated_at)}`}
+                                            </span>
+                                            {p.status === 'published' && (
+                                                <span className="flex items-center gap-1">
+                                                    <Eye className="w-3 h-3" />
+                                                    {(p.views || 0).toLocaleString('id-ID')} views
+                                                </span>
+                                            )}
                                         </p>
                                     </div>
                                 </div>
