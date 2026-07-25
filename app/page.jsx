@@ -238,6 +238,7 @@ export default function Home() {
           <a href="#api" className="hover:text-[#B9FF66] transition-colors">API</a>
           <a href="#referral" className="hover:text-[#B9FF66] transition-colors">Referral</a>
           <a href="#case-studies" className="hover:text-[#B9FF66] transition-colors">Studi Kasus</a>
+          <Link href="/blog" className="hover:text-[#B9FF66] transition-colors">Blog</Link>
           <Link href="/login" className="hover:text-[#B9FF66] transition-colors">Masuk</Link>
           <Link href="/register">
             <Button variant="primary" className="ml-2 px-5 py-2.5">Daftar</Button>
@@ -255,6 +256,7 @@ export default function Home() {
             <a href="#api" onClick={() => setMenuOpen(false)} className="hover:text-[#B9FF66]">API</a>
             <a href="#referral" onClick={() => setMenuOpen(false)} className="hover:text-[#B9FF66]">Referral</a>
             <a href="#case-studies" onClick={() => setMenuOpen(false)} className="hover:text-[#B9FF66]">Studi Kasus</a>
+            <Link href="/blog" onClick={() => setMenuOpen(false)} className="hover:text-[#B9FF66]">Blog</Link>
             <Link href="/login" className="hover:text-[#B9FF66]">Masuk</Link>
             <Link href="/register">
               <Button variant="primary" className="w-full">Daftar</Button>
@@ -619,6 +621,7 @@ export default function Home() {
               <a href="#api" className="text-gray-300 hover:text-[#B9FF66] transition-colors text-sm w-fit">API</a>
               <a href="#referral" className="text-gray-300 hover:text-[#B9FF66] transition-colors text-sm w-fit">Referral</a>
               <a href="#case-studies" className="text-gray-300 hover:text-[#B9FF66] transition-colors text-sm w-fit">Studi Kasus</a>
+              <Link href="/blog" className="text-gray-300 hover:text-[#B9FF66] transition-colors text-sm w-fit">Blog</Link>
               <a href="#faq" className="text-gray-300 hover:text-[#B9FF66] transition-colors text-sm w-fit">FAQ</a>
             </div>
 
