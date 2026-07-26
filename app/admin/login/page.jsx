@@ -79,7 +79,7 @@ export default function AdminLoginPage() {
                   required
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="admin@suntiksosmed.store"
+                  placeholder="admin@email.com"
                   className="w-full bg-[#111111] border border-white/10 rounded-xl pl-11 pr-4 py-3 text-sm focus:outline-none focus:border-[#FFB800] transition-colors"
                 />
               </div>
