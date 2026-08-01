@@ -1,8 +1,8 @@
 'use client';
 
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-import { useState, useEffect, useRef } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
     Asterisk,
     LayoutDashboard,
@@ -47,21 +47,74 @@ import TiketSection from '../../components/TiketSection';
 import DaftarLayananSection from '../../components/DaftarLayananSection';
 import BeritaSection from '../../components/BeritaSection';
 
+// Label + ikon + subjudul header dijadiin satu sumber, biar nambah menu baru
+// cukup nambah satu baris di sini (dulu subjudulnya kesebar di ternary
+// bertingkat 11 level di dalam JSX header).
 const navItems = [
-    { label: 'Overview', icon: LayoutDashboard },
-    { label: 'Pesan Layanan', icon: ShoppingCart },
-    { label: 'Riwayat Pesanan', icon: History },
-    { label: 'Saldo & Deposit', icon: Wallet },
-    { label: 'Refund', icon: RotateCcw },
-    { label: 'Tiket', icon: Ticket },
-    { label: 'Daftar Layanan', icon: List },
-    { label: 'Berita', icon: Newspaper },
-    { label: 'Referral', icon: Gift },
-    { label: 'API', icon: Code2 },
-    { label: 'Pengaturan', icon: Settings },
+    {
+        label: 'Overview',
+        icon: LayoutDashboard,
+        desc: 'Ini ringkasan aktivitas akun kamu hari ini.',
+    },
+    {
+        label: 'Pesan Layanan',
+        icon: ShoppingCart,
+        desc: 'Pesan followers, likes, views, dan layanan lainnya di sini.',
+    },
+    {
+        label: 'Riwayat Pesanan',
+        icon: History,
+        desc: 'Semua pesanan yang pernah kamu buat.',
+    },
+    {
+        label: 'Saldo & Deposit',
+        icon: Wallet,
+        desc: 'Kelola saldo dan lihat riwayat transaksi kamu.',
+    },
+    {
+        label: 'Refund',
+        icon: RotateCcw,
+        desc: 'Lihat status pengembalian saldo dari pesanan yang gagal.',
+    },
+    {
+        label: 'Tiket',
+        icon: Ticket,
+        desc: 'Butuh bantuan? Buat tiket dan tim kami akan membalas secepatnya.',
+    },
+    {
+        label: 'Daftar Layanan',
+        icon: List,
+        desc: 'Lihat semua layanan dan harga yang tersedia.',
+    },
+    {
+        label: 'Berita',
+        icon: Newspaper,
+        desc: 'Update dan pengumuman terbaru dari SuntikSosmed.',
+    },
+    {
+        label: 'Referral',
+        icon: Gift,
+        desc: 'Ajak teman pakai SuntikSosmed dan dapatkan komisi.',
+    },
+    {
+        label: 'API',
+        icon: Code2,
+        desc: 'Kelola API key untuk integrasi ke sistem kamu sendiri.',
+    },
+    {
+        label: 'Pengaturan',
+        icon: Settings,
+        desc: 'Kelola profil, keamanan, dan preferensi akun.',
+    },
 ];
 
+const DEFAULT_MENU = 'Overview';
 const WEEKDAY_LABELS = ['Min', 'Sen', 'Sel', 'Rab', 'Kam', 'Jum', 'Sab'];
+
+// Kolom `orders` disebutin eksplisit (bukan select('*')) supaya kolom baru
+// yang mungkin sensitif gak ikut kebawa ke browser tanpa sengaja.
+const ORDER_COLUMNS =
+    'id, provider_order_id, layanan, platform, target, jumlah, harga, status, refunded, created_at';
 
 // Kelompokkan pesanan ke 7 hari kalender terakhir (dari yang terlama), buat
 // grafik "Aktivitas 7 Hari Terakhir" di tab Pesanan.
@@ -86,9 +139,32 @@ function countInRange(orders, startMs, endMs) {
 }
 
 function formatRupiah(value) {
-    return `Rp ${value.toLocaleString('id-ID')}`;
+    return `Rp ${(Number(value) || 0).toLocaleString('id-ID')}`;
 }
 
+// Salin ke clipboard dengan fallback: navigator.clipboard cuma jalan di
+// secure context (HTTPS/localhost). Tanpa fallback ini, tombol "Salin" gagal
+// diam-diam di browser lama atau kalau situsnya lagi diakses via HTTP.
+async function copyToClipboard(text) {
+    try {
+        if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return true;
+        }
+        const area = document.createElement('textarea');
+        area.value = text;
+        area.setAttribute('readonly', '');
+        area.style.position = 'fixed';
+        area.style.opacity = '0';
+        document.body.appendChild(area);
+        area.select();
+        const ok = document.execCommand('copy');
+        document.body.removeChild(area);
+        return ok;
+    } catch {
+        return false;
+    }
+}
 
 // --- API Key ---
 // Sementara di-generate & disimpan di client (localStorage) buat kebutuhan
@@ -215,6 +291,17 @@ const UsageChart = ({ data, type = 'area', color = '#B9FF66', formatValue = (v) 
     }, []);
 
     const { width, height } = size;
+
+    // Guard: tanpa ini, data kosong bikin points[points.length - 1] undefined
+    // dan seluruh dashboard crash (blank screen), bukan cuma chart-nya.
+    if (!Array.isArray(data) || data.length === 0) {
+        return (
+            <div ref={containerRef} className="w-full h-56 sm:h-64 lg:h-72 flex items-center justify-center text-sm text-gray-500">
+                Belum ada data untuk ditampilkan.
+            </div>
+        );
+    }
+
     const padding = { top: 16, right: 12, bottom: 28, left: 48 };
     const chartW = width - padding.left - padding.right;
     const chartH = height - padding.top - padding.bottom;
@@ -284,7 +371,7 @@ const UsageChart = ({ data, type = 'area', color = '#B9FF66', formatValue = (v) 
                     )}
 
                 {data.map((d, i) => (
-                    <text key={d.label} x={xFor(i)} y={height - 6} textAnchor="middle" fontSize="11" fill="#8a8a8a">
+                    <text key={`${d.label}-${i}`} x={xFor(i)} y={height - 6} textAnchor="middle" fontSize="11" fill="#8a8a8a">
                         {d.label}
                     </text>
                 ))}
@@ -297,8 +384,92 @@ const UsageChart = ({ data, type = 'area', color = '#B9FF66', formatValue = (v) 
     );
 };
 
+// Isi sidebar dipakai bareng versi desktop & drawer mobile — sebelumnya
+// markup-nya diduplikasi persis dua kali, jadi tiap nambah menu harus diedit
+// di dua tempat.
+const SidebarContent = ({ activeMenu, onSelect, onLogout, onClose }) => (
+    <>
+        <div className="flex items-center justify-between mb-10">
+            <Link href="/dashboard" className="flex items-center gap-2">
+                <Asterisk className="w-8 h-8 text-white" />
+                <span className="text-2xl font-bold tracking-tight">
+                    SuntikSosmed<span className="text-[#B9FF66]">.</span>
+                </span>
+            </Link>
+            {onClose && (
+                <button onClick={onClose} aria-label="Tutup menu">
+                    <X className="w-6 h-6" />
+                </button>
+            )}
+        </div>
+
+        <nav className="flex flex-col gap-1" aria-label="Menu dashboard">
+            {navItems.map(({ label, icon: Icon }) => (
+                <button
+                    key={label}
+                    onClick={() => onSelect(label)}
+                    aria-current={activeMenu === label ? 'page' : undefined}
+                    className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors text-left ${activeMenu === label ? 'bg-[#B9FF66] text-black' : 'text-gray-300 hover:bg-white/5'
+                        }`}
+                >
+                    <Icon className="w-5 h-5" />
+                    {label}
+                </button>
+            ))}
+        </nav>
+
+        <div className="mt-auto">
+            <button
+                onClick={onLogout}
+                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-gray-400 hover:bg-white/5 transition-colors"
+            >
+                <LogOut className="w-5 h-5" />
+                Keluar
+            </button>
+        </div>
+    </>
+);
+
+const DashboardSkeleton = () => (
+    <div className="bg-[#111111] min-h-screen text-white flex">
+        <aside className="hidden lg:flex lg:w-72 flex-col border-r border-white/10 p-6 shrink-0">
+            <div className="h-8 w-48 rounded-lg bg-white/5 mb-10 animate-pulse" />
+            <div className="flex flex-col gap-2">
+                {Array.from({ length: 8 }).map((_, i) => (
+                    <div key={i} className="h-11 rounded-xl bg-white/5 animate-pulse" />
+                ))}
+            </div>
+        </aside>
+        <div className="flex-1 flex flex-col min-w-0">
+            <header className="flex items-center justify-between px-6 lg:px-10 py-6 border-b border-white/10">
+                <div className="h-7 w-52 rounded-lg bg-white/5 animate-pulse" />
+                <div className="w-10 h-10 rounded-full bg-white/5 animate-pulse" />
+            </header>
+            <main className="p-6 lg:p-10 flex flex-col gap-8">
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+                    {Array.from({ length: 4 }).map((_, i) => (
+                        <div key={i} className="h-32 rounded-2xl bg-[#191A19] border border-white/10 animate-pulse" />
+                    ))}
+                </div>
+                <div className="h-80 rounded-2xl bg-[#191A19] border border-white/10 animate-pulse" />
+            </main>
+        </div>
+    </div>
+);
+
+// useSearchParams butuh Suspense boundary di Next.js 15, makanya isi
+// dashboard dipisah ke komponen sendiri di bawah.
 export default function DashboardPage() {
+    return (
+        <Suspense fallback={<DashboardSkeleton />}>
+            <DashboardContent />
+        </Suspense>
+    );
+}
+
+function DashboardContent() {
     const router = useRouter();
+    const searchParams = useSearchParams();
     const [supabase] = useState(() => createClient());
     const [profileMenuOpen, setProfileMenuOpen] = useState(false);
     const [notifOpen, setNotifOpen] = useState(false);
@@ -308,10 +479,28 @@ export default function DashboardPage() {
     const notifRef = useRef(null);
 
     const [sidebarOpen, setSidebarOpen] = useState(false);
-    const [activeMenu, setActiveMenu] = useState('Overview');
     const [usageTab, setUsageTab] = useState('pesanan'); // 'saldo' | 'pesanan'
     const [historyNow, setHistoryNow] = useState(Date.now());
 
+    // Menu aktif disimpan di URL (?tab=...) supaya refresh gak balik ke
+    // Overview, tombol Back browser jalan, dan tab tertentu bisa di-bookmark
+    // atau dikirim ke pelanggan lewat link.
+    const tabParam = searchParams.get('tab');
+    const activeMenu = navItems.some((n) => n.label === tabParam) ? tabParam : DEFAULT_MENU;
+    const activeNav = navItems.find((n) => n.label === activeMenu);
+
+    const setActiveMenu = useCallback(
+        (label) => {
+            const params = new URLSearchParams(Array.from(searchParams.entries()));
+            if (label === DEFAULT_MENU) params.delete('tab');
+            else params.set('tab', label);
+            const qs = params.toString();
+            router.replace(qs ? `/dashboard?${qs}` : '/dashboard', { scroll: false });
+        },
+        [router, searchParams]
+    );
+
+    const [userId, setUserId] = useState(null);
     const [referralCode, setReferralCode] = useState('');
     const [referredCount, setReferredCount] = useState(0);
     const [komisiPersen, setKomisiPersen] = useState(null);
@@ -320,16 +509,19 @@ export default function DashboardPage() {
     const [claimError, setClaimError] = useState('');
     const [referralLink, setReferralLink] = useState('');
     const [referralCopied, setReferralCopied] = useState(false);
+    const [referralCodeCopied, setReferralCodeCopied] = useState(false);
     const [apiKey, setApiKey] = useState('');
     const [apiKeyVisible, setApiKeyVisible] = useState(false);
     const [apiKeyCopied, setApiKeyCopied] = useState(false);
     const [regenerating, setRegenerating] = useState(false);
     const [balance, setBalance] = useState(0);
     const [orders, setOrders] = useState([]);
+    const [loadError, setLoadError] = useState('');
 
     // --- Pengaturan: profil & password lewat Supabase; notifikasi masih lokal ---
     const [settingsName, setSettingsName] = useState('');
     const [settingsEmail, setSettingsEmail] = useState('');
+    const [settingsCurrentPassword, setSettingsCurrentPassword] = useState('');
     const [settingsNewPassword, setSettingsNewPassword] = useState('');
     const [settingsConfirmPassword, setSettingsConfirmPassword] = useState('');
     const [settingsSaving, setSettingsSaving] = useState(false);
@@ -337,86 +529,117 @@ export default function DashboardPage() {
     const [settingsSuccess, setSettingsSuccess] = useState('');
 
     // Auth guard pakai session Supabase beneran. Kalau belum login, tendang
-    // ke /login sebelum dashboard sempat ke-render. Profil, saldo, dan
-    // pesanan sekarang dibaca dari database (tabel profiles & orders) — cuma
-    // API key (tab "API") yang masih sengaja dibiarkan localStorage/demo.
+    // ke /login sebelum dashboard sempat ke-render.
+    //
+    // CATATAN: guard di sini cuma lapis kedua buat UX. Lapis utamanya HARUS
+    // di server (middleware.js / app/dashboard/layout.jsx pakai getUser()),
+    // karena getSession() cuma baca token dari localStorage tanpa verifikasi
+    // ke server, dan seluruh cek di file ini jalan di browser — termasuk cek
+    // status Suspend, yang bisa dilewatin kalau query profiles-nya diblokir
+    // dari DevTools.
     const [authChecked, setAuthChecked] = useState(false);
     useEffect(() => {
         let mounted = true;
 
         async function init() {
-            const {
-                data: { session },
-            } = await supabase.auth.getSession();
+            try {
+                const {
+                    data: { session },
+                } = await supabase.auth.getSession();
 
-            if (!session) {
-                router.push('/login');
-                return;
-            }
+                if (!session) {
+                    router.push('/login');
+                    return;
+                }
 
-            const { data: profile } = await supabase
-                .from('profiles')
-                .select('full_name, email, balance, referral_code, komisi_balance, status')
-                .eq('id', session.user.id)
-                .maybeSingle();
+                const { data: profile } = await supabase
+                    .from('profiles')
+                    .select('full_name, email, balance, referral_code, komisi_balance, status')
+                    .eq('id', session.user.id)
+                    .maybeSingle();
 
-            if (!mounted) return;
-
-            // Akun yang di-suspend admin gak boleh bisa pakai dashboard sama
-            // sekali — sign out paksa & tendang ke /login, bukan cuma
-            // ditampilin badge doang kayak sebelumnya.
-            if (profile?.status === 'Suspend') {
-                await supabase.auth.signOut();
                 if (!mounted) return;
-                router.push('/login?suspended=1');
-                return;
+
+                // Akun yang di-suspend admin gak boleh bisa pakai dashboard sama
+                // sekali — sign out paksa & tendang ke /login, bukan cuma
+                // ditampilin badge doang kayak sebelumnya.
+                if (profile?.status === 'Suspend') {
+                    await supabase.auth.signOut();
+                    if (!mounted) return;
+                    router.push('/login?suspended=1');
+                    return;
+                }
+
+                setUserId(session.user.id);
+                setSettingsName(profile?.full_name || '');
+                setSettingsEmail(profile?.email || session.user.email || '');
+                setBalance(Number(profile?.balance) || 0);
+                setReferralCode(profile?.referral_code || '');
+                setKomisiBalance(Number(profile?.komisi_balance) || 0);
+                setApiKey(loadOrCreateApiKey());
+
+                const { count: referredTotal } = await supabase
+                    .from('profiles')
+                    .select('id', { count: 'exact', head: true })
+                    .eq('referred_by', session.user.id);
+                if (!mounted) return;
+                setReferredCount(referredTotal || 0);
+
+                const persen = await loadReferralKomisiPersen();
+                if (!mounted) return;
+                setKomisiPersen(persen);
+
+                // .eq('user_id', ...) sengaja ditulis eksplisit walau RLS udah
+                // scoped per user — kalau policy-nya suatu saat kesenggol,
+                // query ini tetep gak bakal narik order milik orang lain.
+                const { data: orderRows, error: orderError } = await supabase
+                    .from('orders')
+                    .select(ORDER_COLUMNS)
+                    .eq('user_id', session.user.id)
+                    .order('created_at', { ascending: false });
+
+                if (!mounted) return;
+                if (orderError) {
+                    console.error('Gagal memuat pesanan:', orderError.message);
+                    setLoadError('Riwayat pesanan gagal dimuat. Coba refresh halaman.');
+                }
+                setOrders((orderRows || []).map(mapOrderRow));
+
+                // Sync status ke provider di background — gak nunggu ini kelar
+                // buat nampilin dashboard duluan. Kalau ada yang berubah, ambil
+                // ulang biar tabel Riwayat Pesanan langsung kekinian tanpa perlu
+                // pelanggan refresh manual.
+                fetch('/api/orders/sync', { method: 'POST' })
+                    .then((res) => res.json())
+                    .then((data) => {
+                        if (!mounted || !data.updated || data.updated.length === 0) return null;
+                        return supabase
+                            .from('orders')
+                            .select(ORDER_COLUMNS)
+                            .eq('user_id', session.user.id)
+                            .order('created_at', { ascending: false });
+                    })
+                    .then((res) => {
+                        if (mounted && res?.data) setOrders(res.data.map(mapOrderRow));
+                    })
+                    .catch((err) => console.error('Gagal sync status pesanan:', err.message));
+
+                const loaded = await loadBroadcasts();
+                if (!mounted) return;
+                setBroadcasts(loaded);
+                if (loaded.length > 0) {
+                    const seenAt = Number(localStorage.getItem(BROADCAST_SEEN_KEY) || 0);
+                    setHasUnseenBroadcast(new Date(loaded[0].created_at).getTime() > seenAt);
+                }
+            } catch (err) {
+                console.error('Gagal memuat dashboard:', err);
+                if (mounted) setLoadError('Gagal memuat data. Coba refresh halaman.');
+            } finally {
+                // Wajib di finally: kalau ini cuma jalan di baris terakhir,
+                // satu error di tengah bikin pelanggan kejebak di layar hitam
+                // kosong tanpa pesan apa pun.
+                if (mounted) setAuthChecked(true);
             }
-
-            setSettingsName(profile?.full_name || '');
-            setSettingsEmail(profile?.email || session.user.email || '');
-            setBalance(Number(profile?.balance) || 0);
-            setReferralCode(profile?.referral_code || '');
-            setKomisiBalance(Number(profile?.komisi_balance) || 0);
-            setApiKey(loadOrCreateApiKey());
-
-            const { count: referredTotal } = await supabase
-                .from('profiles')
-                .select('id', { count: 'exact', head: true })
-                .eq('referred_by', session.user.id);
-            setReferredCount(referredTotal || 0);
-            setKomisiPersen(await loadReferralKomisiPersen());
-
-            const { data: orderRows } = await supabase
-                .from('orders')
-                .select('*')
-                .order('created_at', { ascending: false });
-
-            if (!mounted) return;
-            setOrders((orderRows || []).map(mapOrderRow));
-
-            // Sync status ke provider di background — gak nunggu ini kelar
-            // buat nampilin dashboard duluan. Kalau ada yang berubah, ambil
-            // ulang biar tabel Riwayat Pesanan langsung kekinian tanpa perlu
-            // pelanggan refresh manual.
-            fetch('/api/orders/sync', { method: 'POST' })
-                .then((res) => res.json())
-                .then((data) => {
-                    if (!mounted || !data.updated || data.updated.length === 0) return null;
-                    return supabase.from('orders').select('*').order('created_at', { ascending: false });
-                })
-                .then((res) => {
-                    if (mounted && res?.data) setOrders(res.data.map(mapOrderRow));
-                })
-                .catch((err) => console.error('Gagal sync status pesanan:', err.message));
-
-            const loaded = await loadBroadcasts();
-            setBroadcasts(loaded);
-            if (loaded.length > 0) {
-                const seenAt = Number(localStorage.getItem(BROADCAST_SEEN_KEY) || 0);
-                setHasUnseenBroadcast(new Date(loaded[0].created_at).getTime() > seenAt);
-            }
-
-            setAuthChecked(true);
         }
 
         init();
@@ -425,6 +648,36 @@ export default function DashboardPage() {
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
+
+    // Saldo & status akun ikut berubah realtime. Ini yang bikin pelanggan gak
+    // perlu refresh manual pas admin baru aja konfirmasi deposit manual, dan
+    // bikin suspend langsung kena di tengah sesi (bukan nunggu reload).
+    // Butuh Realtime diaktifkan buat tabel `profiles` di Supabase.
+    useEffect(() => {
+        if (!userId) return;
+
+        const channel = supabase
+            .channel(`profile-${userId}`)
+            .on(
+                'postgres_changes',
+                { event: 'UPDATE', schema: 'public', table: 'profiles', filter: `id=eq.${userId}` },
+                async (payload) => {
+                    const next = payload.new || {};
+                    if (next.status === 'Suspend') {
+                        await supabase.auth.signOut();
+                        router.push('/login?suspended=1');
+                        return;
+                    }
+                    setBalance(Number(next.balance) || 0);
+                    setKomisiBalance(Number(next.komisi_balance) || 0);
+                }
+            )
+            .subscribe();
+
+        return () => {
+            supabase.removeChannel(channel);
+        };
+    }, [userId, supabase, router]);
 
     // Tandai semua broadcast sudah dilihat begitu dropdown notifikasi dibuka.
     useEffect(() => {
@@ -449,6 +702,30 @@ export default function DashboardPage() {
         document.addEventListener('mousedown', handleClickOutside);
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
+
+    // Escape nutup drawer & dropdown — standar yang diharapkan orang, dan satu-
+    // satunya jalan keluar buat yang navigasi pakai keyboard.
+    useEffect(() => {
+        function handleEscape(e) {
+            if (e.key !== 'Escape') return;
+            setSidebarOpen(false);
+            setNotifOpen(false);
+            setProfileMenuOpen(false);
+        }
+        document.addEventListener('keydown', handleEscape);
+        return () => document.removeEventListener('keydown', handleEscape);
+    }, []);
+
+    // Kunci scroll body selama drawer mobile kebuka, biar halaman di belakang
+    // overlay gak ikut ke-scroll pas jari digeser.
+    useEffect(() => {
+        if (!sidebarOpen) return;
+        const prev = document.body.style.overflow;
+        document.body.style.overflow = 'hidden';
+        return () => {
+            document.body.style.overflow = prev;
+        };
+    }, [sidebarOpen]);
 
     useEffect(() => {
         const tick = setInterval(() => setHistoryNow(Date.now()), 30000);
@@ -480,53 +757,67 @@ export default function DashboardPage() {
             return;
         }
 
-        setBalance(Number(data));
+        setBalance(Number(data) || 0);
         setKomisiBalance(0);
     }
 
-    // Dipanggil OrderForm begitu pesanan beneran berhasil dibuat di provider.
-    // Status awal "Pending" — bakal ke-update otomatis ke status asli
-    // (Diproses/Selesai/Gagal) lewat /api/orders/sync yang jalan tiap
-    // dashboard dibuka (lihat useEffect init() di atas).
-    async function handleOrderSuccess(order) {
-        const {
-            data: { user },
-        } = await supabase.auth.getUser();
-        if (!user) return;
+    // Dipanggil OrderForm setelah /api/smm/order sukses.
+    //
+    // PENTING: baris `orders` sekarang ditulis DI SERVER (di dalam route
+    // /api/smm/order pakai supabaseAdmin), bukan lagi insert dari browser.
+    // Insert dari client bikin siapa pun bisa ngarang baris pesanan sendiri
+    // lewat console — harga bebas, status "Selesai", bahkan refunded=true —
+    // yang langsung ngerusak Refund, riwayat pemakaian saldo, dan statistik
+    // admin. Fungsi ini cuma nampilin hasil yang dikirim balik server.
+    const handleOrderSuccess = useCallback(
+        async (order) => {
+            if (order?.created_at) {
+                setOrders((prev) => [mapOrderRow(order), ...prev]);
+                return;
+            }
 
-        const { data, error } = await supabase
-            .from('orders')
-            .insert({
-                user_id: user.id,
-                provider_order_id: order.providerOrderId ? String(order.providerOrderId) : null,
-                layanan: order.layanan,
-                platform: order.platform,
-                target: order.target,
-                jumlah: order.jumlah,
-                harga: order.harga,
-                status: 'Pending',
-            })
-            .select()
-            .single();
+            // Fallback: server belum ngirim balik row-nya. Ambil ulang dari DB
+            // supaya pesanan tetep muncul, tanpa nulis apa pun dari client.
+            console.warn('Route order belum mengembalikan baris pesanan — mengambil ulang dari database.');
+            if (!userId) return;
+            const { data } = await supabase
+                .from('orders')
+                .select(ORDER_COLUMNS)
+                .eq('user_id', userId)
+                .order('created_at', { ascending: false });
+            if (data) setOrders(data.map(mapOrderRow));
+        },
+        [supabase, userId]
+    );
 
-        if (error) {
-            console.error('Gagal menyimpan pesanan:', error.message);
+    const handleCopyReferral = async () => {
+        if (!referralLink) return;
+        const ok = await copyToClipboard(referralLink);
+        if (!ok) {
+            setClaimError('Gagal menyalin. Salin manual dari kolom di atas.');
+            setTimeout(() => setClaimError(''), 4000);
             return;
         }
-
-        setOrders((prev) => [mapOrderRow(data), ...prev]);
-    }
-
-    const handleCopyReferral = () => {
-        if (!referralLink) return;
-        navigator.clipboard.writeText(referralLink);
         setReferralCopied(true);
         setTimeout(() => setReferralCopied(false), 1500);
     };
 
-    const handleCopyApiKey = () => {
+    const handleCopyReferralCode = async () => {
+        if (!referralCode) return;
+        const ok = await copyToClipboard(referralCode);
+        if (!ok) {
+            setClaimError('Gagal menyalin. Salin manual dari kolom di atas.');
+            setTimeout(() => setClaimError(''), 4000);
+            return;
+        }
+        setReferralCodeCopied(true);
+        setTimeout(() => setReferralCodeCopied(false), 1500);
+    };
+
+    const handleCopyApiKey = async () => {
         if (!apiKey) return;
-        navigator.clipboard.writeText(apiKey);
+        const ok = await copyToClipboard(apiKey);
+        if (!ok) return;
         setApiKeyCopied(true);
         setTimeout(() => setApiKeyCopied(false), 1500);
     };
@@ -551,13 +842,32 @@ export default function DashboardPage() {
         setSettingsError('');
         setSettingsSuccess('');
 
-        if (settingsNewPassword || settingsConfirmPassword) {
-            if (settingsNewPassword.length < 6) {
-                setSettingsError('Password baru minimal 6 karakter.');
+        const nama = settingsName.trim();
+        if (!nama) {
+            setSettingsError('Nama tidak boleh kosong.');
+            return;
+        }
+        if (nama.length > 50) {
+            setSettingsError('Nama maksimal 50 karakter.');
+            return;
+        }
+
+        const gantiPassword = Boolean(settingsNewPassword || settingsConfirmPassword);
+        if (gantiPassword) {
+            if (!settingsCurrentPassword) {
+                setSettingsError('Masukkan password lama untuk mengganti password.');
+                return;
+            }
+            if (settingsNewPassword.length < 8) {
+                setSettingsError('Password baru minimal 8 karakter.');
                 return;
             }
             if (settingsNewPassword !== settingsConfirmPassword) {
                 setSettingsError('Konfirmasi password tidak cocok.');
+                return;
+            }
+            if (settingsNewPassword === settingsCurrentPassword) {
+                setSettingsError('Password baru harus berbeda dari password lama.');
                 return;
             }
         }
@@ -568,13 +878,35 @@ export default function DashboardPage() {
             data: { user },
         } = await supabase.auth.getUser();
 
+        if (!user) {
+            setSettingsSaving(false);
+            setSettingsError('Sesi kamu sudah berakhir. Masuk lagi untuk menyimpan perubahan.');
+            return;
+        }
+
+        // Verifikasi password lama sebelum boleh ganti password. Tanpa ini,
+        // siapa pun yang sempat pegang sesi aktif (laptop kebuka, token
+        // kecolong) bisa langsung ganti password dan ngunci pemilik aslinya
+        // keluar tanpa pernah tau password lamanya.
+        if (gantiPassword) {
+            const { error: reauthError } = await supabase.auth.signInWithPassword({
+                email: settingsEmail,
+                password: settingsCurrentPassword,
+            });
+            if (reauthError) {
+                setSettingsSaving(false);
+                setSettingsError('Password lama salah.');
+                return;
+            }
+        }
+
         const { error: profileError } = await supabase
             .from('profiles')
-            .update({ full_name: settingsName })
-            .eq('id', user?.id);
+            .update({ full_name: nama })
+            .eq('id', user.id);
 
         let authError = null;
-        if (settingsNewPassword) {
+        if (gantiPassword) {
             const { error } = await supabase.auth.updateUser({ password: settingsNewPassword });
             authError = error;
         }
@@ -586,109 +918,453 @@ export default function DashboardPage() {
             return;
         }
 
+        setSettingsName(nama);
         setSettingsSuccess('Perubahan tersimpan.');
+        setTimeout(() => setSettingsSuccess(''), 4000);
+        setSettingsCurrentPassword('');
         setSettingsNewPassword('');
         setSettingsConfirmPassword('');
     };
 
-    // --- Statistik dari data dummy ---
-    const completedOrders = orders.filter((o) => o.status === 'Selesai');
-    const activeOrders = orders.filter((o) => o.status === 'Diproses' || o.status === 'Pending');
-    const orderDailyCounts = getDailyOrderCounts(completedOrders, historyNow, 7);
-    const orderWeekTotal = orderDailyCounts.reduce((sum, d) => sum + d.value, 0);
-    const orderWeekAvg = orderDailyCounts.length ? Math.round(orderWeekTotal / orderDailyCounts.length) : 0;
+    // --- Statistik dari tabel `orders` ---
+    // Dibungkus useMemo: `historyNow` tick tiap 30 detik, jadi tanpa ini
+    // semua filter/reduce di bawah jalan ulang tiap render biasa juga.
+    const stats = useMemo(() => {
+        const completedOrders = orders.filter((o) => o.status === 'Selesai');
+        const activeOrders = orders.filter((o) => o.status === 'Diproses' || o.status === 'Pending');
+        const orderDailyCounts = getDailyOrderCounts(completedOrders, historyNow, 7);
+        const orderWeekTotal = orderDailyCounts.reduce((sum, d) => sum + d.value, 0);
+        const orderWeekAvg = orderDailyCounts.length ? Math.round(orderWeekTotal / orderDailyCounts.length) : 0;
 
-    const weekMs = 7 * 24 * 60 * 60 * 1000;
-    const thisWeekCount = countInRange(completedOrders, historyNow - weekMs, historyNow);
-    const prevWeekCount = countInRange(completedOrders, historyNow - 2 * weekMs, historyNow - weekMs);
-    const orderTrendPct =
-        prevWeekCount > 0 ? Math.round(((thisWeekCount - prevWeekCount) / prevWeekCount) * 100) : null;
+        const weekMs = 7 * 24 * 60 * 60 * 1000;
+        const thisWeekCount = countInRange(completedOrders, historyNow - weekMs, historyNow);
+        const prevWeekCount = countInRange(completedOrders, historyNow - 2 * weekMs, historyNow - weekMs);
+        const orderTrendPct =
+            prevWeekCount > 0 ? Math.round(((thisWeekCount - prevWeekCount) / prevWeekCount) * 100) : null;
 
-    const platformsUsedCount = new Set(orders.map((o) => o.platform).filter(Boolean)).size;
+        const platformsUsedCount = new Set(orders.map((o) => o.platform).filter(Boolean)).size;
+
+        return {
+            completedOrders,
+            activeOrders,
+            orderDailyCounts,
+            orderWeekTotal,
+            orderWeekAvg,
+            orderTrendPct,
+            platformsUsedCount,
+        };
+    }, [orders, historyNow]);
+
+    const {
+        completedOrders,
+        activeOrders,
+        orderDailyCounts,
+        orderWeekTotal,
+        orderWeekAvg,
+        orderTrendPct,
+        platformsUsedCount,
+    } = stats;
 
     // Jangan render dashboard sama sekali sampai kepastian status login jelas —
     // ini yang mastiin gak ada "flash" isi dashboard sebelum redirect ke /login.
     if (!authChecked) {
-        return <div className="bg-[#111111] min-h-screen" />;
+        return <DashboardSkeleton />;
+    }
+
+    function renderSection() {
+        switch (activeMenu) {
+            case 'Pesan Layanan':
+                return (
+                    <OrderForm
+                        balance={balance}
+                        onBalanceUpdated={(newBalance) => setBalance(Number(newBalance) || 0)}
+                        onOrderSuccess={handleOrderSuccess}
+                    />
+                );
+
+            case 'Riwayat Pesanan':
+                return <RiwayatPesananSection orders={orders} historyNow={historyNow} />;
+
+            case 'Saldo & Deposit':
+                return <SaldoSection balance={balance} />;
+
+            case 'Refund':
+                return <RefundSection />;
+
+            case 'Tiket':
+                return <TiketSection />;
+
+            case 'Daftar Layanan':
+                return <DaftarLayananSection />;
+
+            case 'Berita':
+                return <BeritaSection />;
+
+            case 'Referral':
+                return (
+                    <div className="flex flex-col gap-6 max-w-2xl">
+                        <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6">
+                            <h2 className="text-lg font-bold mb-2 flex items-center gap-2">
+                                <Gift className="w-5 h-5 text-[#B9FF66]" />
+                                Ajak Teman, Dapatkan Komisi
+                            </h2>
+                            <p className="text-sm text-gray-400 mb-6">
+                                Bagikan kode atau link referral kamu. Setiap teman yang daftar lewat link kamu otomatis
+                                kehitung di sini. Komisi referral saat ini{' '}
+                                <span className="text-[#B9FF66] font-medium">{komisiPersen ?? '...'}%</span> dari deposit
+                                pertama teman kamu.
+                            </p>
+
+                            <label className="text-sm text-gray-400 mb-1.5 block">Kode referral kamu</label>
+                            <div className="flex items-center gap-2 mb-4">
+                                <div className="flex-1 bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 font-mono font-bold tracking-widest text-[#B9FF66]">
+                                    {referralCode || '...'}
+                                </div>
+                                <button
+                                    onClick={handleCopyReferralCode}
+                                    disabled={!referralCode}
+                                    className={`shrink-0 flex items-center gap-1.5 text-xs font-medium px-3.5 py-2.5 rounded-xl transition-colors disabled:opacity-40 ${referralCodeCopied ? 'bg-[#B9FF66] text-black' : 'bg-white/10 hover:bg-white/20 text-white'
+                                        }`}
+                                >
+                                    {referralCodeCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                                    {referralCodeCopied ? 'Tersalin' : 'Salin'}
+                                </button>
+                            </div>
+
+                            <label className="text-sm text-gray-400 mb-1.5 block">Link referral</label>
+                            <div className="flex items-center gap-2">
+                                <div className="flex-1 bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-300 truncate">
+                                    {referralLink || '...'}
+                                </div>
+                                <button
+                                    onClick={handleCopyReferral}
+                                    disabled={!referralLink}
+                                    className={`shrink-0 flex items-center gap-1.5 text-xs font-medium px-3.5 py-2.5 rounded-xl transition-colors disabled:opacity-40 ${referralCopied ? 'bg-[#B9FF66] text-black' : 'bg-white/10 hover:bg-white/20 text-white'
+                                        }`}
+                                >
+                                    {referralCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                                    {referralCopied ? 'Tersalin' : 'Salin'}
+                                </button>
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 gap-4 lg:gap-6">
+                            <StatCard icon={Users} label="Teman diajak" value={String(referredCount)} />
+                            <StatCard icon={Wallet} label="Komisi didapat" value={formatRupiah(komisiBalance)} />
+                        </div>
+
+                        {claimError && (
+                            <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3">
+                                {claimError}
+                            </div>
+                        )}
+
+                        {komisiBalance > 0 && (
+                            <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6 flex items-center justify-between gap-4 flex-wrap">
+                                <div>
+                                    <p className="text-sm font-medium">Saldo komisi: {formatRupiah(komisiBalance)}</p>
+                                    <p className="text-xs text-gray-500 mt-0.5">
+                                        {komisiBalance >= 10000
+                                            ? 'Udah bisa ditarik ke saldo utama, langsung bisa dipakai buat pesan layanan.'
+                                            : `Minimal Rp 10.000 buat ditarik (kurang ${formatRupiah(10000 - komisiBalance)} lagi).`}
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={handleClaimKomisi}
+                                    disabled={komisiBalance < 10000 || claimingKomisi}
+                                    className="flex items-center gap-2 bg-[#B9FF66] text-black text-sm font-medium px-5 py-2.5 rounded-xl hover:bg-[#a0e655] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                    {claimingKomisi ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowDownToLine className="w-4 h-4" />}
+                                    {claimingKomisi ? 'Memproses...' : 'Tarik ke Saldo Utama'}
+                                </button>
+                            </div>
+                        )}
+
+                        <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6">
+                            <h3 className="text-sm font-bold mb-3">Cara kerja</h3>
+                            <ol className="text-sm text-gray-400 flex flex-col gap-2 list-decimal list-inside">
+                                <li>Bagikan kode atau link referral di atas ke teman kamu.</li>
+                                <li>Teman kamu daftar akun baru pakai link itu — otomatis kehitung di "Teman diajak" di atas.</li>
+                                <li>
+                                    Begitu deposit pertama mereka berhasil (QRIS otomatis atau Manual yang udah dikonfirmasi
+                                    admin), kamu otomatis dapat komisi {komisiPersen ?? '...'}% dari nominal itu.
+                                </li>
+                                <li>Komisi kekumpul dulu di "Saldo komisi" — begitu udah minimal Rp 10.000, tinggal klik "Tarik ke Saldo Utama".</li>
+                            </ol>
+                        </div>
+                    </div>
+                );
+
+            case 'API':
+                return (
+                    <div className="flex flex-col gap-6 max-w-2xl">
+                        <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6">
+                            <h2 className="text-lg font-bold mb-2 flex items-center gap-2 flex-wrap">
+                                <Code2 className="w-5 h-5 text-[#B9FF66]" />
+                                API Key
+                                <span className="text-[10px] font-medium tracking-wide uppercase bg-[#FFB800]/10 text-[#FFB800] px-2 py-0.5 rounded-full">
+                                    Akan Datang
+                                </span>
+                            </h2>
+                            <p className="text-sm text-gray-400 mb-6">
+                                Pakai key ini untuk akses layanan SuntikSosmed langsung dari sistem atau bot kamu sendiri.
+                                Jangan bagikan key ini ke siapa pun.
+                            </p>
+
+                            <label className="text-sm text-gray-400 mb-1.5 block">Key kamu</label>
+                            <div className="flex items-center gap-2 mb-3">
+                                <div className="flex-1 bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 font-mono text-sm text-gray-200 truncate">
+                                    {apiKeyVisible ? apiKey : maskApiKey(apiKey)}
+                                </div>
+                                <button
+                                    disabled
+                                    title="Belum aktif"
+                                    className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 text-white opacity-40 cursor-not-allowed"
+                                >
+                                    {apiKeyVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                                </button>
+                                <button
+                                    disabled
+                                    title="Belum aktif"
+                                    className="shrink-0 flex items-center gap-1.5 text-xs font-medium px-3.5 py-2.5 rounded-xl bg-white/10 text-white opacity-40 cursor-not-allowed"
+                                >
+                                    <Copy className="w-3.5 h-3.5" />
+                                    Salin
+                                </button>
+                            </div>
+
+                            <button
+                                disabled
+                                title="Belum aktif"
+                                className="flex items-center gap-2 text-xs font-medium text-red-300 opacity-40 cursor-not-allowed"
+                            >
+                                <RefreshCw className="w-3.5 h-3.5" />
+                                Buat key baru
+                            </button>
+                        </div>
+
+                        <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6">
+                            <h3 className="text-sm font-bold mb-3 flex items-center gap-2">
+                                <Code2 className="w-4 h-4 text-[#B9FF66]" />
+                                Contoh penggunaan
+                            </h3>
+                            <pre className="bg-[#111111] border border-white/10 rounded-xl p-4 text-xs text-gray-300 overflow-x-auto">
+                                {`curl https://suntiksosmed.store/api/v1/order \\
+  -H "Authorization: Bearer ${apiKeyVisible ? apiKey : 'API_KEY_KAMU'}" \\
+  -H "Content-Type: application/json" \\
+  -d '{"layanan": 123, "target": "https://instagram.com/username", "jumlah": 1000}'`}
+                            </pre>
+                            <p className="text-xs text-gray-500 mt-3">
+                                Dokumentasi endpoint & response lengkap akan menyusul. Jaga API key kamu — kalau bocor, segera
+                                buat key baru.
+                            </p>
+                        </div>
+                    </div>
+                );
+
+            case 'Pengaturan':
+                return (
+                    <div className="flex flex-col gap-6 max-w-2xl">
+                        {settingsError && (
+                            <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3">
+                                {settingsError}
+                            </div>
+                        )}
+                        {settingsSuccess && (
+                            <div className="bg-[#B9FF66]/10 border border-[#B9FF66]/30 text-[#B9FF66] text-sm rounded-xl px-4 py-3">
+                                {settingsSuccess}
+                            </div>
+                        )}
+
+                        <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6">
+                            <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
+                                <User className="w-5 h-5 text-[#B9FF66]" />
+                                Profil Akun
+                            </h2>
+                            <div className="flex flex-col gap-4">
+                                <div>
+                                    <label className="text-sm text-gray-400 mb-1.5 block" htmlFor="setting-nama">
+                                        Nama
+                                    </label>
+                                    <input
+                                        id="setting-nama"
+                                        type="text"
+                                        value={settingsName}
+                                        maxLength={50}
+                                        onChange={(e) => setSettingsName(e.target.value)}
+                                        className="w-full bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#B9FF66]"
+                                    />
+                                </div>
+                                <div>
+                                    <label className="text-sm text-gray-400 mb-1.5 block" htmlFor="setting-email">
+                                        Email
+                                    </label>
+                                    <input
+                                        id="setting-email"
+                                        type="email"
+                                        value={settingsEmail}
+                                        readOnly
+                                        disabled
+                                        title="Email gak bisa diganti dari sini. Hubungi admin kalau perlu diubah."
+                                        className="w-full bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-500 cursor-not-allowed"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1.5">
+                                        Email gak bisa diganti sendiri. Hubungi admin kalau perlu diubah.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6">
+                            <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
+                                <Lock className="w-5 h-5 text-[#B9FF66]" />
+                                Keamanan
+                            </h2>
+                            <div className="flex flex-col gap-4">
+                                <div>
+                                    <label className="text-sm text-gray-400 mb-1.5 block" htmlFor="setting-password-lama">
+                                        Password lama
+                                    </label>
+                                    <input
+                                        id="setting-password-lama"
+                                        type="password"
+                                        autoComplete="current-password"
+                                        placeholder="••••••••"
+                                        value={settingsCurrentPassword}
+                                        onChange={(e) => setSettingsCurrentPassword(e.target.value)}
+                                        className="w-full bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#B9FF66]"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1.5">
+                                        Diperlukan hanya kalau kamu mau mengganti password.
+                                    </p>
+                                </div>
+                                <div>
+                                    <label className="text-sm text-gray-400 mb-1.5 block" htmlFor="setting-password-baru">
+                                        Password baru
+                                    </label>
+                                    <input
+                                        id="setting-password-baru"
+                                        type="password"
+                                        autoComplete="new-password"
+                                        placeholder="••••••••"
+                                        value={settingsNewPassword}
+                                        onChange={(e) => setSettingsNewPassword(e.target.value)}
+                                        className="w-full bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#B9FF66]"
+                                    />
+                                    <p className="text-xs text-gray-500 mt-1.5">Minimal 8 karakter.</p>
+                                </div>
+                                <div>
+                                    <label className="text-sm text-gray-400 mb-1.5 block" htmlFor="setting-password-konfirmasi">
+                                        Konfirmasi password
+                                    </label>
+                                    <input
+                                        id="setting-password-konfirmasi"
+                                        type="password"
+                                        autoComplete="new-password"
+                                        placeholder="••••••••"
+                                        value={settingsConfirmPassword}
+                                        onChange={(e) => setSettingsConfirmPassword(e.target.value)}
+                                        className="w-full bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#B9FF66]"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+
+                        <button
+                            onClick={handleSaveSettings}
+                            disabled={settingsSaving}
+                            className="flex items-center justify-center gap-2 bg-[#B9FF66] text-black text-sm font-medium px-5 py-3 rounded-xl hover:bg-[#a0e655] transition-colors self-start disabled:opacity-60"
+                        >
+                            <Save className="w-4 h-4" />
+                            {settingsSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
+                        </button>
+                    </div>
+                );
+
+            default:
+                return (
+                    <>
+                        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
+                            <StatCard icon={Wallet} label="Saldo aktif" value={formatRupiah(balance)} />
+                            <StatCard icon={ShoppingCart} label="Pesanan aktif" value={activeOrders.length} />
+                            <StatCard
+                                icon={CheckCircle2}
+                                label="Pesanan selesai"
+                                value={completedOrders.length}
+                                trend={orderTrendPct !== null ? `${orderTrendPct > 0 ? '+' : ''}${orderTrendPct}%` : undefined}
+                            />
+                            <StatCard icon={Users} label="Platform digunakan" value={platformsUsedCount} />
+                        </div>
+
+                        <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6">
+                            <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
+                                <div>
+                                    <h2 className="text-lg font-bold">Aktivitas 7 Hari Terakhir</h2>
+                                    <p className="text-gray-500 text-sm mt-0.5">
+                                        {usageTab === 'saldo'
+                                            ? 'Riwayat saldo akan muncul di sini setelah ada transaksi.'
+                                            : orderWeekTotal > 0
+                                                ? `${orderWeekTotal} pesanan selesai minggu ini, rata-rata ${orderWeekAvg} per hari`
+                                                : 'Belum ada pesanan selesai minggu ini.'}
+                                    </p>
+                                </div>
+                                <div className="flex items-center gap-1 bg-[#111111] border border-white/10 rounded-xl p-1 self-start">
+                                    <button
+                                        onClick={() => setUsageTab('saldo')}
+                                        className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${usageTab === 'saldo' ? 'bg-[#B9FF66] text-black' : 'text-gray-400 hover:text-white'
+                                            }`}
+                                    >
+                                        Saldo
+                                    </button>
+                                    <button
+                                        onClick={() => setUsageTab('pesanan')}
+                                        className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${usageTab === 'pesanan' ? 'bg-[#B9FF66] text-black' : 'text-gray-400 hover:text-white'
+                                            }`}
+                                    >
+                                        Pesanan
+                                    </button>
+                                </div>
+                            </div>
+
+                            {usageTab === 'saldo' ? (
+                                <div className="w-full h-56 sm:h-64 lg:h-72 flex items-center justify-center text-center text-sm text-gray-500 px-6">
+                                    Belum ada riwayat saldo — akan terisi seiring top up dan pemakaian.
+                                </div>
+                            ) : (
+                                <UsageChart
+                                    data={orderDailyCounts}
+                                    type="bar"
+                                    color="#B9FF66"
+                                    formatValue={(v) => Math.round(v).toString()}
+                                />
+                            )}
+                        </div>
+                    </>
+                );
+        }
     }
 
     return (
         <div className="bg-[#111111] min-h-screen text-white flex">
             {/* Sidebar - desktop */}
             <aside className="hidden lg:flex lg:w-72 flex-col border-r border-white/10 p-6 shrink-0">
-                <Link href="/dashboard" className="flex items-center gap-2 mb-10">
-                    <Asterisk className="w-8 h-8 text-white" />
-                    <span className="text-2xl font-bold tracking-tight">
-                        SuntikSosmed<span className="text-[#B9FF66]">.</span>
-                    </span>
-                </Link>
-
-                <nav className="flex flex-col gap-1">
-                    {navItems.map(({ label, icon: Icon }) => (
-                        <button
-                            key={label}
-                            onClick={() => setActiveMenu(label)}
-                            className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors text-left ${activeMenu === label ? 'bg-[#B9FF66] text-black' : 'text-gray-300 hover:bg-white/5'
-                                }`}
-                        >
-                            <Icon className="w-5 h-5" />
-                            {label}
-                        </button>
-                    ))}
-                </nav>
-
-                <div className="mt-auto">
-                    <button
-                        onClick={handleLogout}
-                        className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-gray-400 hover:bg-white/5 transition-colors"
-                    >
-                        <LogOut className="w-5 h-5" />
-                        Keluar
-                    </button>
-                </div>
+                <SidebarContent activeMenu={activeMenu} onSelect={setActiveMenu} onLogout={handleLogout} />
             </aside>
 
             {/* Sidebar - mobile drawer */}
             {sidebarOpen && (
                 <div className="fixed inset-0 z-50 lg:hidden">
                     <div className="absolute inset-0 bg-black/60" onClick={() => setSidebarOpen(false)} />
-                    <aside className="absolute left-0 top-0 bottom-0 w-72 bg-[#111111] border-r border-white/10 p-6 flex flex-col">
-                        <div className="flex items-center justify-between mb-10">
-                            <Link href="/dashboard" className="flex items-center gap-2">
-                                <Asterisk className="w-8 h-8 text-white" />
-                                <span className="text-2xl font-bold tracking-tight">
-                                    SuntikSosmed<span className="text-[#B9FF66]">.</span>
-                                </span>
-                            </Link>
-                            <button onClick={() => setSidebarOpen(false)}>
-                                <X className="w-6 h-6" />
-                            </button>
-                        </div>
-                        <nav className="flex flex-col gap-1">
-                            {navItems.map(({ label, icon: Icon }) => (
-                                <button
-                                    key={label}
-                                    onClick={() => {
-                                        setActiveMenu(label);
-                                        setSidebarOpen(false);
-                                    }}
-                                    className={`flex items-center gap-3 px-4 py-3 rounded-xl font-medium transition-colors text-left ${activeMenu === label ? 'bg-[#B9FF66] text-black' : 'text-gray-300 hover:bg-white/5'
-                                        }`}
-                                >
-                                    <Icon className="w-5 h-5" />
-                                    {label}
-                                </button>
-                            ))}
-                        </nav>
-                        <div className="mt-auto">
-                            <button
-                                onClick={handleLogout}
-                                className="w-full flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-gray-400 hover:bg-white/5 transition-colors"
-                            >
-                                <LogOut className="w-5 h-5" />
-                                Keluar
-                            </button>
-                        </div>
+                    <aside className="absolute left-0 top-0 bottom-0 w-72 bg-[#111111] border-r border-white/10 p-6 flex flex-col overflow-y-auto">
+                        <SidebarContent
+                            activeMenu={activeMenu}
+                            onSelect={(label) => {
+                                setActiveMenu(label);
+                                setSidebarOpen(false);
+                            }}
+                            onLogout={handleLogout}
+                            onClose={() => setSidebarOpen(false)}
+                        />
                     </aside>
                 </div>
             )}
@@ -698,7 +1374,7 @@ export default function DashboardPage() {
                 {/* Topbar */}
                 <header className="flex items-center justify-between px-6 lg:px-10 py-6 border-b border-white/10">
                     <div className="flex items-center gap-4">
-                        <button className="lg:hidden" onClick={() => setSidebarOpen(true)}>
+                        <button className="lg:hidden" onClick={() => setSidebarOpen(true)} aria-label="Buka menu">
                             <Menu className="w-6 h-6" />
                         </button>
                         <div>
@@ -707,31 +1383,7 @@ export default function DashboardPage() {
                                     ? `Halo, ${settingsName ? settingsName.split(' ')[0] : 'kamu'} 👋`
                                     : activeMenu}
                             </h1>
-                            <p className="text-gray-400 text-sm hidden md:block">
-                                {activeMenu === 'Overview'
-                                    ? 'Ini ringkasan aktivitas akun kamu hari ini.'
-                                    : activeMenu === 'Pesan Layanan'
-                                        ? 'Pesan followers, likes, views, dan layanan lainnya di sini.'
-                                        : activeMenu === 'Riwayat Pesanan'
-                                            ? 'Semua pesanan yang pernah kamu buat.'
-                                            : activeMenu === 'Saldo & Deposit'
-                                                ? 'Kelola saldo dan lihat riwayat transaksi kamu.'
-                                                : activeMenu === 'Refund'
-                                                    ? 'Lihat status pengembalian saldo dari pesanan yang gagal.'
-                                                    : activeMenu === 'Tiket'
-                                                        ? 'Butuh bantuan? Buat tiket dan tim kami akan membalas secepatnya.'
-                                                        : activeMenu === 'Daftar Layanan'
-                                                            ? 'Lihat semua layanan dan harga yang tersedia.'
-                                                            : activeMenu === 'Berita'
-                                                                ? 'Update dan pengumuman terbaru dari SuntikSosmed.'
-                                                                : activeMenu === 'Referral'
-                                                                    ? 'Ajak teman pakai SuntikSosmed dan dapatkan komisi.'
-                                                                    : activeMenu === 'API'
-                                                                        ? 'Kelola API key untuk integrasi ke sistem kamu sendiri.'
-                                                                        : activeMenu === 'Pengaturan'
-                                                                            ? 'Kelola profil, keamanan, dan preferensi akun.'
-                                                                            : ''}
-                            </p>
+                            <p className="text-gray-400 text-sm hidden md:block">{activeNav?.desc || ''}</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-4">
@@ -741,6 +1393,8 @@ export default function DashboardPage() {
                                     setNotifOpen((o) => !o);
                                     setProfileMenuOpen(false);
                                 }}
+                                aria-label="Notifikasi"
+                                aria-expanded={notifOpen}
                                 className="relative w-10 h-10 rounded-full bg-[#191A19] border border-white/10 flex items-center justify-center hover:border-[#B9FF66] transition-colors"
                             >
                                 <Bell className="w-5 h-5" />
@@ -765,7 +1419,8 @@ export default function DashboardPage() {
                                                         </span>
                                                         <div className="min-w-0">
                                                             <p className="text-sm font-medium truncate">{b.judul}</p>
-                                                            <p className="text-gray-400 text-xs mt-0.5">{b.isi}</p>
+                                                            {/* line-clamp: broadcast panjang bikin dropdown melar tanpa batas */}
+                                                            <p className="text-gray-400 text-xs mt-0.5 line-clamp-3">{b.isi}</p>
                                                             <p className="text-gray-600 text-xs mt-1">{formatBroadcastTanggal(b.created_at)}</p>
                                                         </div>
                                                     </div>
@@ -782,6 +1437,8 @@ export default function DashboardPage() {
                                     setProfileMenuOpen((o) => !o);
                                     setNotifOpen(false);
                                 }}
+                                aria-label="Menu akun"
+                                aria-expanded={profileMenuOpen}
                                 className="w-10 h-10 rounded-full bg-[#B9FF66] flex items-center justify-center text-black font-bold hover:opacity-90 transition-opacity"
                             >
                                 {settingsName ? settingsName.trim().charAt(0).toUpperCase() : 'U'}
@@ -814,313 +1471,19 @@ export default function DashboardPage() {
                 </header>
 
                 <main className="p-6 lg:p-10 flex flex-col gap-8">
-                    {activeMenu === 'Pesan Layanan' ? (
-                        <OrderForm
-                            balance={balance}
-                            onBalanceUpdated={(newBalance) => setBalance(Number(newBalance))}
-                            onOrderSuccess={handleOrderSuccess}
-                        />
-                    ) : activeMenu === 'Riwayat Pesanan' ? (
-                        <RiwayatPesananSection orders={orders} historyNow={historyNow} />
-                    ) : activeMenu === 'Saldo & Deposit' ? (
-                        <SaldoSection balance={balance} />
-                    ) : activeMenu === 'Refund' ? (
-                        <RefundSection />
-                    ) : activeMenu === 'Tiket' ? (
-                        <TiketSection />
-                    ) : activeMenu === 'Daftar Layanan' ? (
-                        <DaftarLayananSection />
-                    ) : activeMenu === 'Berita' ? (
-                        <BeritaSection />
-                    ) : activeMenu === 'Referral' ? (
-                        <div className="flex flex-col gap-6 max-w-2xl">
-                            <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6">
-                                <h2 className="text-lg font-bold mb-2 flex items-center gap-2">
-                                    <Gift className="w-5 h-5 text-[#B9FF66]" />
-                                    Ajak Teman, Dapatkan Komisi
-                                </h2>
-                                <p className="text-sm text-gray-400 mb-6">
-                                    Bagikan kode atau link referral kamu. Setiap teman yang daftar lewat link kamu otomatis
-                                    kehitung di sini. Komisi referral saat ini{' '}
-                                    <span className="text-[#B9FF66] font-medium">{komisiPersen ?? '...'}%</span> dari deposit
-                                    pertama teman kamu.
-                                </p>
-
-                                <label className="text-sm text-gray-400 mb-1.5 block">Kode referral kamu</label>
-                                <div className="flex items-center gap-2 mb-4">
-                                    <div className="flex-1 bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 font-mono font-bold tracking-widest text-[#B9FF66]">
-                                        {referralCode || '...'}
-                                    </div>
-                                </div>
-
-                                <label className="text-sm text-gray-400 mb-1.5 block">Link referral</label>
-                                <div className="flex items-center gap-2">
-                                    <div className="flex-1 bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-300 truncate">
-                                        {referralLink || '...'}
-                                    </div>
-                                    <button
-                                        onClick={handleCopyReferral}
-                                        className={`shrink-0 flex items-center gap-1.5 text-xs font-medium px-3.5 py-2.5 rounded-xl transition-colors ${referralCopied ? 'bg-[#B9FF66] text-black' : 'bg-white/10 hover:bg-white/20 text-white'
-                                            }`}
-                                    >
-                                        {referralCopied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                                        {referralCopied ? 'Tersalin' : 'Salin'}
-                                    </button>
-                                </div>
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4 lg:gap-6">
-                                <StatCard icon={Users} label="Teman diajak" value={String(referredCount)} />
-                                <StatCard icon={Wallet} label="Komisi didapat" value={formatRupiah(komisiBalance)} />
-                            </div>
-
-                            {claimError && (
-                                <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3">
-                                    {claimError}
-                                </div>
-                            )}
-
-                            {komisiBalance > 0 && (
-                                <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6 flex items-center justify-between gap-4 flex-wrap">
-                                    <div>
-                                        <p className="text-sm font-medium">Saldo komisi: {formatRupiah(komisiBalance)}</p>
-                                        <p className="text-xs text-gray-500 mt-0.5">
-                                            {komisiBalance >= 10000
-                                                ? 'Udah bisa ditarik ke saldo utama, langsung bisa dipakai buat pesan layanan.'
-                                                : `Minimal Rp 10.000 buat ditarik (kurang ${formatRupiah(10000 - komisiBalance)} lagi).`}
-                                        </p>
-                                    </div>
-                                    <button
-                                        onClick={handleClaimKomisi}
-                                        disabled={komisiBalance < 10000 || claimingKomisi}
-                                        className="flex items-center gap-2 bg-[#B9FF66] text-black text-sm font-medium px-5 py-2.5 rounded-xl hover:bg-[#a0e655] transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-                                    >
-                                        {claimingKomisi ? <Loader2 className="w-4 h-4 animate-spin" /> : <ArrowDownToLine className="w-4 h-4" />}
-                                        {claimingKomisi ? 'Memproses...' : 'Tarik ke Saldo Utama'}
-                                    </button>
-                                </div>
-                            )}
-
-                            <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6">
-                                <h3 className="text-sm font-bold mb-3">Cara kerja</h3>
-                                <ol className="text-sm text-gray-400 flex flex-col gap-2 list-decimal list-inside">
-                                    <li>Bagikan kode atau link referral di atas ke teman kamu.</li>
-                                    <li>Teman kamu daftar akun baru pakai link itu — otomatis kehitung di "Teman diajak" di atas.</li>
-                                    <li>
-                                        Begitu deposit pertama mereka berhasil (QRIS otomatis atau Manual yang udah dikonfirmasi
-                                        admin), kamu otomatis dapat komisi {komisiPersen ?? '...'}% dari nominal itu.
-                                    </li>
-                                    <li>Komisi kekumpul dulu di "Saldo komisi" — begitu udah minimal Rp 10.000, tinggal klik "Tarik ke Saldo Utama".</li>
-                                </ol>
-                            </div>
-                        </div>
-                    ) : activeMenu === 'API' ? (
-                        <div className="flex flex-col gap-6 max-w-2xl">
-                            <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6">
-                                <h2 className="text-lg font-bold mb-2 flex items-center gap-2 flex-wrap">
-                                    <Code2 className="w-5 h-5 text-[#B9FF66]" />
-                                    API Key
-                                    <span className="text-[10px] font-medium tracking-wide uppercase bg-[#FFB800]/10 text-[#FFB800] px-2 py-0.5 rounded-full">
-                                        Akan Datang
-                                    </span>
-                                </h2>
-                                <p className="text-sm text-gray-400 mb-6">
-                                    Pakai key ini untuk akses layanan SuntikSosmed langsung dari sistem atau bot kamu sendiri.
-                                    Jangan bagikan key ini ke siapa pun.
-                                </p>
-
-                                <label className="text-sm text-gray-400 mb-1.5 block">Key kamu</label>
-                                <div className="flex items-center gap-2 mb-3">
-                                    <div className="flex-1 bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 font-mono text-sm text-gray-200 truncate">
-                                        {apiKeyVisible ? apiKey : maskApiKey(apiKey)}
-                                    </div>
-                                    <button
-                                        disabled
-                                        title="Belum aktif"
-                                        className="shrink-0 w-10 h-10 flex items-center justify-center rounded-xl bg-white/10 text-white opacity-40 cursor-not-allowed"
-                                    >
-                                        {apiKeyVisible ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                                    </button>
-                                    <button
-                                        disabled
-                                        title="Belum aktif"
-                                        className="shrink-0 flex items-center gap-1.5 text-xs font-medium px-3.5 py-2.5 rounded-xl bg-white/10 text-white opacity-40 cursor-not-allowed"
-                                    >
-                                        <Copy className="w-3.5 h-3.5" />
-                                        Salin
-                                    </button>
-                                </div>
-
-                                <button
-                                    disabled
-                                    title="Belum aktif"
-                                    className="flex items-center gap-2 text-xs font-medium text-red-300 opacity-40 cursor-not-allowed"
-                                >
-                                    <RefreshCw className="w-3.5 h-3.5" />
-                                    Buat key baru
-                                </button>
-                            </div>
-
-                            <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6">
-                                <h3 className="text-sm font-bold mb-3 flex items-center gap-2">
-                                    <Code2 className="w-4 h-4 text-[#B9FF66]" />
-                                    Contoh penggunaan
-                                </h3>
-                                <pre className="bg-[#111111] border border-white/10 rounded-xl p-4 text-xs text-gray-300 overflow-x-auto">
-                                    {`curl https://suntiksosmed.store/api/v1/order \\
-  -H "Authorization: Bearer ${apiKeyVisible ? apiKey : 'API_KEY_KAMU'}" \\
-  -H "Content-Type: application/json" \\
-  -d '{"layanan": 123, "target": "https://instagram.com/username", "jumlah": 1000}'`}
-                                </pre>
-                                <p className="text-xs text-gray-500 mt-3">
-                                    Dokumentasi endpoint & response lengkap akan menyusul. Jaga API key kamu — kalau bocor, segera
-                                    buat key baru.
-                                </p>
-                            </div>
-                        </div>
-                    ) : activeMenu === 'Pengaturan' ? (
-                        <div className="flex flex-col gap-6 max-w-2xl">
-                            {settingsError && (
-                                <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3">
-                                    {settingsError}
-                                </div>
-                            )}
-                            {settingsSuccess && (
-                                <div className="bg-[#B9FF66]/10 border border-[#B9FF66]/30 text-[#B9FF66] text-sm rounded-xl px-4 py-3">
-                                    {settingsSuccess}
-                                </div>
-                            )}
-
-                            <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6">
-                                <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
-                                    <User className="w-5 h-5 text-[#B9FF66]" />
-                                    Profil Akun
-                                </h2>
-                                <div className="flex flex-col gap-4">
-                                    <div>
-                                        <label className="text-sm text-gray-400 mb-1.5 block">Nama</label>
-                                        <input
-                                            type="text"
-                                            value={settingsName}
-                                            onChange={(e) => setSettingsName(e.target.value)}
-                                            className="w-full bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#B9FF66]"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-sm text-gray-400 mb-1.5 block">Email</label>
-                                        <input
-                                            type="email"
-                                            value={settingsEmail}
-                                            readOnly
-                                            disabled
-                                            title="Email gak bisa diganti dari sini. Hubungi admin kalau perlu diubah."
-                                            className="w-full bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm text-gray-500 cursor-not-allowed"
-                                        />
-                                        <p className="text-xs text-gray-500 mt-1.5">
-                                            Email gak bisa diganti sendiri. Hubungi admin kalau perlu diubah.
-                                        </p>
-                                    </div>
-                                </div>
-                            </div>
-
-                            <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6">
-                                <h2 className="text-lg font-bold mb-6 flex items-center gap-2">
-                                    <Lock className="w-5 h-5 text-[#B9FF66]" />
-                                    Keamanan
-                                </h2>
-                                <div className="flex flex-col gap-4">
-                                    <div>
-                                        <label className="text-sm text-gray-400 mb-1.5 block">Password baru</label>
-                                        <input
-                                            type="password"
-                                            placeholder="••••••••"
-                                            value={settingsNewPassword}
-                                            onChange={(e) => setSettingsNewPassword(e.target.value)}
-                                            className="w-full bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#B9FF66]"
-                                        />
-                                    </div>
-                                    <div>
-                                        <label className="text-sm text-gray-400 mb-1.5 block">Konfirmasi password</label>
-                                        <input
-                                            type="password"
-                                            placeholder="••••••••"
-                                            value={settingsConfirmPassword}
-                                            onChange={(e) => setSettingsConfirmPassword(e.target.value)}
-                                            className="w-full bg-[#111111] border border-white/10 rounded-xl px-4 py-2.5 text-sm focus:outline-none focus:border-[#B9FF66]"
-                                        />
-                                    </div>
-                                </div>
-                            </div>
-
+                    {loadError && (
+                        <div className="bg-red-500/10 border border-red-500/30 text-red-400 text-sm rounded-xl px-4 py-3 flex items-center justify-between gap-4 flex-wrap">
+                            <span>{loadError}</span>
                             <button
-                                onClick={handleSaveSettings}
-                                disabled={settingsSaving}
-                                className="flex items-center justify-center gap-2 bg-[#B9FF66] text-black text-sm font-medium px-5 py-3 rounded-xl hover:bg-[#a0e655] transition-colors self-start disabled:opacity-60"
+                                onClick={() => window.location.reload()}
+                                className="text-xs font-medium underline underline-offset-2 hover:text-red-300"
                             >
-                                <Save className="w-4 h-4" />
-                                {settingsSaving ? 'Menyimpan...' : 'Simpan Perubahan'}
+                                Muat ulang
                             </button>
                         </div>
-                    ) : (
-                        <>
-                            {/* Kartu statistik — masih dari data dummy di atas, ganti begitu backend ada */}
-                            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 lg:gap-6">
-                                <StatCard icon={Wallet} label="Saldo aktif" value={formatRupiah(balance)} />
-                                <StatCard icon={ShoppingCart} label="Pesanan aktif" value={activeOrders.length} />
-                                <StatCard
-                                    icon={CheckCircle2}
-                                    label="Pesanan selesai"
-                                    value={completedOrders.length}
-                                    trend={orderTrendPct !== null ? `${orderTrendPct > 0 ? '+' : ''}${orderTrendPct}%` : undefined}
-                                />
-                                <StatCard icon={Users} label="Platform digunakan" value={platformsUsedCount} />
-                            </div>
-
-                            <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6">
-                                <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between mb-6">
-                                    <div>
-                                        <h2 className="text-lg font-bold">Aktivitas 7 Hari Terakhir</h2>
-                                        <p className="text-gray-500 text-sm mt-0.5">
-                                            {usageTab === 'saldo'
-                                                ? 'Riwayat saldo akan muncul di sini setelah ada transaksi.'
-                                                : orderWeekTotal > 0
-                                                    ? `${orderWeekTotal} pesanan selesai minggu ini, rata-rata ${orderWeekAvg} per hari`
-                                                    : 'Belum ada pesanan selesai minggu ini.'}
-                                        </p>
-                                    </div>
-                                    <div className="flex items-center gap-1 bg-[#111111] border border-white/10 rounded-xl p-1 self-start">
-                                        <button
-                                            onClick={() => setUsageTab('saldo')}
-                                            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${usageTab === 'saldo' ? 'bg-[#B9FF66] text-black' : 'text-gray-400 hover:text-white'
-                                                }`}
-                                        >
-                                            Saldo
-                                        </button>
-                                        <button
-                                            onClick={() => setUsageTab('pesanan')}
-                                            className={`px-4 py-1.5 rounded-lg text-sm font-medium transition-colors ${usageTab === 'pesanan' ? 'bg-[#B9FF66] text-black' : 'text-gray-400 hover:text-white'
-                                                }`}
-                                        >
-                                            Pesanan
-                                        </button>
-                                    </div>
-                                </div>
-
-                                {usageTab === 'saldo' ? (
-                                    <div className="w-full h-56 sm:h-64 lg:h-72 flex items-center justify-center text-center text-sm text-gray-500 px-6">
-                                        Belum ada riwayat saldo — akan terisi seiring top up dan pemakaian.
-                                    </div>
-                                ) : (
-                                    <UsageChart
-                                        data={orderDailyCounts}
-                                        type="bar"
-                                        color="#B9FF66"
-                                        formatValue={(v) => Math.round(v).toString()}
-                                    />
-                                )}
-                            </div>
-                        </>
                     )}
+
+                    {renderSection()}
                 </main>
             </div>
         </div>

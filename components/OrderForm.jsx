@@ -235,6 +235,13 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
                     serviceId: service.id,
                     link: target.trim(),
                     quantity: jumlahNum,
+                    // Label tampilan (nama layanan terjemahan + platform) cuma
+                    // ada di sisi client, provider gak punya versi Indonesianya.
+                    // Server nerima ini murni buat kolom tampilan dan
+                    // membersihkannya dulu -- harga & kuantitas tetep dihitung
+                    // ulang di server, gak percaya angka dari sini.
+                    layananLabel: service.name,
+                    platformLabel: platform?.label || '-',
                     ...(isCustomComments ? { comments: comments.trim() } : {}),
                 }),
             });
@@ -254,7 +261,12 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
                 timestamp: Date.now(),
             };
             onBalanceUpdated?.(data.newBalance);
-            onOrderSuccess?.(order);
+            // Baris `orders` sekarang ditulis DI SERVER (route /api/smm/order),
+            // bukan di-insert dari browser lagi. data.orderRow itu baris asli
+            // dari database -- dioper apa adanya ke dashboard biar yang tampil
+            // sama persis sama yang tersimpan. Objek `order` di atas tetep
+            // dipakai buat layar sukses di komponen ini.
+            onOrderSuccess?.(data.orderRow ?? order);
             setSuccess(order);
             setTarget('');
             setJumlah('');

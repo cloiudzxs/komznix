@@ -20,6 +20,17 @@ async function loadPricingSettings(supabaseAdmin) {
     };
 }
 
+// Label tampilan (nama layanan versi Indonesia + nama platform) cuma ada di
+// sisi client, provider gak nyediain. Nilai ini murni kosmetik buat kolom
+// `layanan`/`platform` di riwayat -- gak dipakai buat hitung harga apa pun --
+// tapi tetep dibersihin dan dipotong panjangnya biar gak ada yang nyuntik
+// teks raksasa ke tabel.
+function sanitizeLabel(value, fallback, maxLength) {
+    const raw = typeof value === 'string' ? value.trim() : '';
+    const chosen = raw || String(fallback || '-');
+    return chosen.replace(/\s+/g, ' ').slice(0, maxLength);
+}
+
 export async function POST(request) {
     // Wajib login DULU sebelum bisa manggil endpoint ini.
     const supabase = await createServerSupabaseClient();
@@ -46,11 +57,30 @@ export async function POST(request) {
         return NextResponse.json({ error: 'Body request tidak valid.' }, { status: 400 });
     }
 
-    const { serviceId, link, quantity, comments } = body || {};
+    const { serviceId, link, quantity, comments, layananLabel, platformLabel } = body || {};
     const quantityNum = Number(quantity);
 
     if (!serviceId || !link || !quantityNum) {
         return NextResponse.json({ error: 'serviceId, link, dan quantity wajib diisi.' }, { status: 400 });
+    }
+
+    const targetLink = String(link).trim();
+    if (!targetLink || targetLink.length > 500) {
+        return NextResponse.json({ error: 'Target pesanan tidak valid.' }, { status: 400 });
+    }
+
+    // Untuk layanan Custom Comments, jumlah pesanan HARUS sama persis dengan
+    // banyaknya baris komentar. Client udah ngunci ini di form, tapi form bisa
+    // dilewati (curl) -- jadi divalidasi ulang di sini biar jumlah yang dibayar
+    // gak beda dari jumlah komentar yang beneran dikirim ke provider.
+    if (typeof comments === 'string' && comments.trim()) {
+        const lineCount = comments.split('\n').filter((line) => line.trim() !== '').length;
+        if (lineCount !== quantityNum) {
+            return NextResponse.json(
+                { error: 'Jumlah pesanan harus sama dengan banyaknya baris komentar.' },
+                { status: 400 }
+            );
+        }
     }
 
     const supabaseAdmin = createAdminClient();
@@ -100,13 +130,14 @@ export async function POST(request) {
         return NextResponse.json({ error: msg }, { status: 400 });
     }
 
+    let providerOrderId;
     try {
-        const result = await placeOrder({ serviceId, link, quantity: quantityNum, comments });
-        return NextResponse.json({ order: result?.order, price, newBalance: Number(newBalance) });
+        const result = await placeOrder({ serviceId, link: targetLink, quantity: quantityNum, comments });
+        providerOrderId = result?.order;
     } catch (err) {
         // Order ke provider gagal PADAHAL saldo udah kepotong -> refund balik
         // biar pelanggan gak rugi. Pakai supabaseAdmin (BUKAN supabase biasa),
-        // soalnya add_balance bakal di-revoke dari role authenticated -- kalau
+        // soalnya add_balance udah di-revoke dari role authenticated -- kalau
         // masih pakai session user di sini, refund ini bakal ikut gagal.
         await supabaseAdmin.rpc('add_balance', { amount: price });
         console.error('placeOrder ke provider gagal:', err.message);
@@ -115,4 +146,48 @@ export async function POST(request) {
             { status: 400 }
         );
     }
+
+    // Baris `orders` ditulis DI SINI, bukan dari browser.
+    //
+    // Sebelumnya dashboard yang nge-insert sendiri lewat supabase client, yang
+    // artinya siapa pun bisa buka console dan ngarang pesanan palsu: harga
+    // bebas, status 'Selesai', bahkan refunded=true. Itu langsung ngerusak
+    // menu Refund, riwayat pemakaian saldo, dan seluruh statistik admin.
+    // Sekarang cuma service role yang boleh nulis ke tabel ini, dan `harga`
+    // yang masuk adalah harga hasil hitungan server di atas.
+    let orderRow = null;
+    const { data: inserted, error: insertError } = await supabaseAdmin
+        .from('orders')
+        .insert({
+            user_id: user.id,
+            provider_order_id: providerOrderId ? String(providerOrderId) : null,
+            layanan: sanitizeLabel(layananLabel, service.name, 150),
+            platform: sanitizeLabel(platformLabel, service.category, 50),
+            target: targetLink,
+            jumlah: quantityNum,
+            harga: price,
+            status: 'Pending',
+        })
+        .select()
+        .single();
+
+    if (insertError) {
+        // Order UDAH masuk ke provider dan saldo UDAH kepotong, jadi jangan
+        // refund di sini — pesanannya beneran jalan. Yang hilang cuma
+        // pencatatannya, dan itu harus keliatan jelas di log biar bisa
+        // dimasukin manual lewat admin.
+        console.error(
+            `GAGAL menyimpan pesanan ke database. user_id=${user.id} provider_order_id=${providerOrderId} harga=${price}:`,
+            insertError.message
+        );
+    } else {
+        orderRow = inserted;
+    }
+
+    return NextResponse.json({
+        order: providerOrderId, // ID dari provider, dipakai buat layar sukses di OrderForm
+        orderRow, // baris database yang baru dibuat (null kalau insert gagal)
+        price,
+        newBalance: Number(newBalance),
+    });
 }
