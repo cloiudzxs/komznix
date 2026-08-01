@@ -1403,7 +1403,7 @@ function DashboardContent() {
                                 )}
                             </button>
                             {notifOpen && (
-                                <div className="absolute right-0 mt-2 w-80 bg-[#191A19] border border-white/10 rounded-xl shadow-xl z-20 overflow-hidden">
+                                <div className="absolute right-0 mt-2 w-[calc(100vw-3rem)] max-w-80 sm:w-80 bg-[#191A19] border border-white/10 rounded-xl shadow-xl z-20 overflow-hidden">
                                     <div className="px-4 py-3 border-b border-white/10 font-medium text-sm">Notifikasi</div>
                                     {broadcasts.length === 0 ? (
                                         <div className="px-4 py-8 text-center text-sm text-gray-500">Belum ada notifikasi.</div>

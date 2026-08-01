@@ -280,30 +280,33 @@ export default function OrderForm({ balance, onBalanceUpdated, onOrderSuccess })
 
     if (success) {
         return (
-            <div className="bg-[#191A19] border border-white/10 rounded-2xl p-10 flex flex-col items-center text-center gap-4 max-w-xl mx-auto">
+            <div className="bg-[#191A19] border border-white/10 rounded-2xl p-6 sm:p-10 flex flex-col items-center text-center gap-4 max-w-xl mx-auto w-full min-w-0">
                 <div className="w-14 h-14 rounded-2xl bg-[#B9FF66] flex items-center justify-center">
                     <CheckCircle2 className="w-7 h-7 text-black" />
                 </div>
                 <h2 className="text-lg font-bold">Pesanan berhasil dibuat</h2>
-                <div className="w-full bg-[#111111] border border-white/10 rounded-xl p-4 text-left text-sm flex flex-col gap-2 mt-2">
-                    <div className="flex justify-between text-gray-400">
-                        <span>ID Pesanan</span>
+                {/* min-w-0 + break-words di tiap baris: nama layanan & URL target
+                    dari provider panjang banget dan sering gak punya spasi, jadi
+                    tanpa ini barisnya nolak menyusut dan nembus lebar layar HP. */}
+                <div className="w-full min-w-0 bg-[#111111] border border-white/10 rounded-xl p-4 text-left text-sm flex flex-col gap-2 mt-2">
+                    <div className="flex justify-between gap-3 text-gray-400">
+                        <span className="shrink-0">ID Pesanan</span>
                         <span className="text-white font-mono">{success.id}</span>
                     </div>
-                    <div className="flex justify-between text-gray-400">
-                        <span>Layanan</span>
-                        <span className="text-white text-right">{success.layanan}</span>
+                    <div className="flex justify-between gap-3 text-gray-400 min-w-0">
+                        <span className="shrink-0">Layanan</span>
+                        <span className="text-white text-right min-w-0 break-words">{success.layanan}</span>
                     </div>
                     <div className="flex justify-between gap-3 text-gray-400 min-w-0">
                         <span className="shrink-0">Target</span>
-                        <span className="text-white truncate min-w-0">{success.target}</span>
+                        <span className="text-white text-right min-w-0 break-all">{success.target}</span>
                     </div>
-                    <div className="flex justify-between text-gray-400">
-                        <span>Jumlah</span>
+                    <div className="flex justify-between gap-3 text-gray-400">
+                        <span className="shrink-0">Jumlah</span>
                         <span className="text-white">{success.jumlah.toLocaleString('id-ID')}</span>
                     </div>
-                    <div className="flex justify-between text-gray-400 pt-2 border-t border-white/10">
-                        <span>Total dibayar</span>
+                    <div className="flex justify-between gap-3 text-gray-400 pt-2 border-t border-white/10">
+                        <span className="shrink-0">Total dibayar</span>
                         <span className="text-[#B9FF66] font-bold">{formatRupiah(success.harga)}</span>
                     </div>
                 </div>
