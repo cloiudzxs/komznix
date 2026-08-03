@@ -29,6 +29,7 @@ import {
     MessageCircle,
     BarChart3,
     BookOpen,
+    BadgePlus,
 } from 'lucide-react';
 import OrdersManager from '../../components/admin/OrdersManager';
 import UsersManager from '../../components/admin/UsersManager';
@@ -42,6 +43,7 @@ import BroadcastManager from '../../components/admin/BroadcastManager';
 import BeritaManager from '../../components/admin/BeritaManager';
 import BlogManager from '../../components/admin/BlogManager';
 import StatistikManager from '../../components/admin/StatistikManager';
+import DepositManualManager from '../../components/admin/DepositManualManager';
 
 const navItems = [
     { label: 'Overview', icon: LayoutDashboard },
@@ -50,6 +52,7 @@ const navItems = [
     { label: 'Kelola Pengguna', icon: Users },
     { label: 'Kelola Layanan', icon: Settings2 },
     { label: 'Deposit Masuk', icon: Wallet },
+    { label: 'Deposit Manual', icon: BadgePlus },
     { label: 'Tiket Support', icon: MessageSquare },
     { label: 'Broadcast', icon: Megaphone },
     { label: 'Kelola Berita', icon: Newspaper },
@@ -621,6 +624,8 @@ export default function AdminPage() {
                         <ServicesManager />
                     ) : activeMenu === 'Deposit Masuk' ? (
                         <DepositsManager />
+                    ) : activeMenu === 'Deposit Manual' ? (
+                        <DepositManualManager />
                     ) : activeMenu === 'Tiket Support' ? (
                         <TicketsManager />
                     ) : activeMenu === 'Broadcast' ? (

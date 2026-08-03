@@ -10,6 +10,8 @@ const aksiStyle = {
     Aktifkan: 'bg-[#FFB800]/10 text-[#FFB800]',
     Balas: 'bg-[#FFB800]/10 text-[#FFB800]',
     Pengaturan: 'bg-purple-500/10 text-purple-400',
+    'Deposit Manual': 'bg-[#FFB800]/10 text-[#FFB800]',
+    'Pengurangan Saldo': 'bg-red-500/10 text-red-400',
 };
 
 function formatTanggalLengkap(iso) {

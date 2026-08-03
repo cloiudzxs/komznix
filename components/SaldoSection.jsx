@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Wallet, QrCode, Loader2, CheckCircle2, X, Clock, MessageCircle, ExternalLink, Plus, XCircle, ShoppingCart } from 'lucide-react';
+import { Wallet, QrCode, Loader2, CheckCircle2, X, Clock, MessageCircle, ExternalLink, Plus, XCircle, ShoppingCart, MinusCircle } from 'lucide-react';
 import { createClient } from '../lib/supabase/client';
 
 function formatRupiah(value) {
@@ -35,6 +35,7 @@ function formatTanggal(iso) {
 
 const transactionStatusStyle = {
     Berhasil: 'bg-[#B9FF66]/10 text-[#B9FF66]',
+    Ditolak: 'bg-red-500/10 text-red-400',
     Kedaluwarsa: 'bg-red-500/10 text-red-400',
     'Menunggu Konfirmasi': 'bg-blue-500/10 text-blue-400',
 };
@@ -75,11 +76,45 @@ export default function SaldoSection({ balance, onAddBalance }) {
     // ditampilkan di sini (bakal jadi fitur/tampilan sendiri nanti).
     async function loadUsageHistory() {
         setLoadingUsage(true);
-        const { data } = await supabase
-            .from('orders')
-            .select('id, layanan, harga, status, created_at')
-            .order('created_at', { ascending: false });
-        setUsageHistory(data || []);
+
+        // Dua sumber pengurangan saldo: pesanan, dan penyesuaian manual oleh admin
+        // (tabel saldo_adjustments). Digabung jadi satu daftar, urut terbaru.
+        const [orderRes, adjustRes] = await Promise.all([
+            supabase
+                .from('orders')
+                .select('id, layanan, harga, status, created_at')
+                .order('created_at', { ascending: false }),
+            supabase
+                .from('saldo_adjustments')
+                .select('id, jumlah, tipe, catatan, created_at')
+                .order('created_at', { ascending: false }),
+        ]);
+
+        const dariPesanan = (orderRes.data || []).map((o) => ({
+            key: `order-${o.id}`,
+            jenis: 'pesanan',
+            label: o.layanan,
+            jumlah: o.harga,
+            status: o.status,
+            created_at: o.created_at,
+        }));
+
+        const dariPenyesuaian = (adjustRes.data || [])
+            .filter((a) => a.tipe === 'pengurangan')
+            .map((a) => ({
+                key: `adjust-${a.id}`,
+                jenis: 'penyesuaian',
+                label: a.catatan ? `Penyesuaian saldo — ${a.catatan}` : 'Penyesuaian saldo oleh admin',
+                jumlah: a.jumlah,
+                status: 'Penyesuaian',
+                created_at: a.created_at,
+            }));
+
+        const gabungan = [...dariPesanan, ...dariPenyesuaian].sort(
+            (a, b) => new Date(b.created_at) - new Date(a.created_at)
+        );
+
+        setUsageHistory(gabungan);
         setLoadingUsage(false);
     }
 
@@ -198,14 +233,22 @@ export default function SaldoSection({ balance, onAddBalance }) {
 
         await recordDeposit({ nominal, metode: 'Manual', status: 'Menunggu Konfirmasi' });
 
+        // Email akun ikut dikirim supaya admin langsung tahu saldo siapa yang
+        // harus ditambah, tanpa perlu tanya balik.
+        const { data: authData } = await supabase.auth.getUser();
+        const emailAkun = authData?.user?.email || '';
+
         const pesan = [
-            'Halo Admin SuntikSosmed \u{1F44B}',
+            'Halo Admin SuntikSosmed,',
             '',
-            'Saya ingin melakukan top up saldo dengan rincian berikut:',
-            `\u{1F4B0} Nominal: ${formatRupiah(nominal)}`,
+            'Saya mau top up saldo dengan rincian berikut:',
+            emailAkun ? `Email akun: ${emailAkun}` : null,
+            `Nominal: ${formatRupiah(nominal)}`,
             '',
-            'Mohon info rekening/metode pembayarannya ya. Terima kasih \u{1F64F}',
-        ].join('\n');
+            'Mohon info rekening dan metode pembayarannya ya. Terima kasih.',
+        ]
+            .filter(Boolean)
+            .join('\n');
         const url = `https://wa.me/${ADMIN_WHATSAPP}?text=${encodeURIComponent(pesan)}`;
         window.open(url, '_blank');
 
@@ -292,7 +335,7 @@ export default function SaldoSection({ balance, onAddBalance }) {
                                                 <p className="font-medium flex items-center gap-1.5">
                                                     {trx.status === 'Berhasil' ? (
                                                         <CheckCircle2 className="w-3.5 h-3.5 text-[#B9FF66] shrink-0" />
-                                                    ) : trx.status === 'Kedaluwarsa' ? (
+                                                    ) : trx.status === 'Kedaluwarsa' || trx.status === 'Ditolak' ? (
                                                         <XCircle className="w-3.5 h-3.5 text-red-400 shrink-0" />
                                                     ) : (
                                                         <Clock className="w-3.5 h-3.5 text-blue-400 shrink-0" />
@@ -307,7 +350,7 @@ export default function SaldoSection({ balance, onAddBalance }) {
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <span
-                                                    className={`text-xs font-medium px-2.5 py-1 rounded-full ${transactionStatusStyle[trx.status]}`}
+                                                    className={`text-xs font-medium px-2.5 py-1 rounded-full ${transactionStatusStyle[trx.status] || 'bg-gray-500/10 text-gray-400'}`}
                                                 >
                                                     {trx.status}
                                                 </span>
@@ -341,16 +384,20 @@ export default function SaldoSection({ balance, onAddBalance }) {
                             </thead>
                             <tbody>
                                 {usageHistory.map((o) => (
-                                    <tr key={o.id} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
+                                    <tr key={o.key} className="border-b border-white/5 last:border-0 hover:bg-white/[0.02]">
                                         <td className="px-6 py-4">
                                             <p className="font-medium flex items-center gap-1.5">
-                                                <ShoppingCart className="w-3.5 h-3.5 text-gray-500 shrink-0" />
-                                                {o.layanan}
+                                                {o.jenis === 'penyesuaian' ? (
+                                                    <MinusCircle className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                                ) : (
+                                                    <ShoppingCart className="w-3.5 h-3.5 text-gray-500 shrink-0" />
+                                                )}
+                                                {o.label}
                                             </p>
                                             <p className="text-gray-500 text-xs mt-0.5 md:hidden">{formatTanggal(o.created_at)}</p>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
-                                            <span className="text-red-400 font-bold">-{formatRupiah(o.harga)}</span>
+                                            <span className="text-red-400 font-bold">-{formatRupiah(o.jumlah)}</span>
                                         </td>
                                         <td className="px-6 py-4 whitespace-nowrap">
                                             <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${orderStatusStyle[o.status] || 'bg-gray-500/10 text-gray-400'}`}>
