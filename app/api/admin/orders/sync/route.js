@@ -1,28 +1,17 @@
 import { NextResponse } from 'next/server';
 import { verifyAdmin } from '../../../../../lib/supabase/verifyAdmin';
 import { logActivity } from '../../../../../lib/supabase/logActivity';
-import { getOrderStatus } from '../../../../../lib/provider';
-
-// Perfect Panel API balikin status dalam bahasa Inggris & variannya lumayan
-// banyak antar provider. Mapping ke 4 status internal kita: Pending,
-// Diproses, Selesai, Gagal.
-function mapProviderStatus(providerStatus) {
-    const s = String(providerStatus || '').toLowerCase();
-
-    if (s.includes('pending')) return 'Pending';
-    if (s.includes('progress') || s.includes('processing')) return 'Diproses';
-    if (s.includes('completed')) return 'Selesai';
-    if (s.includes('partial') || s.includes('canceled') || s.includes('cancelled') || s.includes('error')) return 'Gagal';
-
-    // Status yang gak dikenal -> jangan diubah, biar ketauan butuh mapping baru
-    return null;
-}
+// mapProviderStatus sekarang diambil dari lib/provider, bukan didefinisiin
+// ulang di file ini. Dulu ada dua salinan (di sini dan yang dipakai
+// /api/admin/orders) — begitu salah satu diupdate buat status provider
+// baru, yang satunya diem-diem ketinggalan.
+import { getOrderStatus, mapProviderStatus } from '../../../../../lib/provider';
 
 // POST { id } — sync satu pesanan: ambil status asli dari provider,
 // update ke DB kalau beda, catat activity log.
 export async function POST(request) {
-    const { error, supabaseAdmin, email } = await verifyAdmin(request);
-    if (error) return NextResponse.json({ error }, { status: 403 });
+    const { error, status: authStatus, supabaseAdmin, email } = await verifyAdmin(request);
+    if (error) return NextResponse.json({ error }, { status: authStatus || 401 });
 
     let body;
     try {
@@ -38,7 +27,7 @@ export async function POST(request) {
 
     const { data: orderRow, error: fetchError } = await supabaseAdmin
         .from('orders')
-        .select('id, status, provider_order_id') // <-- ganti nama kolom di sini kalau beda
+        .select('id, status, provider_order_id')
         .eq('id', id)
         .maybeSingle();
 
@@ -59,13 +48,14 @@ export async function POST(request) {
         return NextResponse.json({ error: `Gagal ambil status dari provider: ${err.message}` }, { status: 502 });
     }
 
-    const mappedStatus = mapProviderStatus(providerData.status);
+    const mappedStatus = mapProviderStatus(providerData?.status);
 
     if (!mappedStatus) {
         return NextResponse.json({
             order: orderRow,
-            providerStatus: providerData.status,
-            warning: `Status provider "${providerData.status}" belum ada mapping-nya, status DB tidak diubah.`,
+            providerStatus: providerData?.status,
+            changed: false,
+            warning: `Status provider "${providerData?.status}" belum ada mapping-nya, status DB tidak diubah.`,
         });
     }
 
@@ -88,7 +78,7 @@ export async function POST(request) {
         adminEmail: email,
         aksi: 'Sync Status Provider',
         detail: `Pesanan ${id} disync jadi ${mappedStatus} (provider: ${providerData.status})`,
-    });
+    }).catch((err) => console.error('logActivity gagal:', err.message));
 
     return NextResponse.json({ order: updated, providerStatus: providerData.status, changed: true });
 }

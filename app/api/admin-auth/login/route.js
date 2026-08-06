@@ -2,14 +2,82 @@ import { NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { createAdminSessionToken } from '../../../../lib/adminAuth';
 
-// Hash "umpan" (bukan hash asli siapa pun) — dipakai buat tetep manggil
-// bcrypt.compare walau EMAIL-nya udah salah, biar waktu respons gak beda
-// jauh antara "email salah" vs "email benar tapi password salah". Kalau
-// bcrypt cuma dipanggil pas email cocok, orang yang ngukur waktu respons
-// bisa nebak email admin yang bener meski pesan errornya identik.
-const DUMMY_HASH = '$2a$10$CwTycUXWue0Thq9StjUM0uJ8Uu/rq7GJvSJDb0k.vd2jqiFGY.Bpu';
+/* ------------------------------------------------------------------ *
+ * Rate limit login
+ *
+ * Sebelumnya endpoint ini nerima percobaan login tanpa batas. bcrypt emang
+ * lambat (~100ms sekali compare) jadi brute force-nya pelan, tapi pelan
+ * bukan berarti mustahil — dan yang nyerang gak perlu buru-buru.
+ *
+ * Catatan: penyimpanannya di memori, jadi per-instance. Di Vercel yang
+ * serverless, hitungannya bisa ke-reset kalau instance-nya baru. Tetep
+ * ngeblok mayoritas percobaan otomatis. Kalau mau ketat beneran, pindahin
+ * ke tabel Supabase (login_attempts) atau Upstash Redis.
+ * ------------------------------------------------------------------ */
+const MAX_ATTEMPTS = 5;
+const WINDOW_MS = 15 * 60 * 1000;
+const LOCKOUT_MS = 15 * 60 * 1000;
+
+const attempts = new Map(); // ip -> { count, firstAt, lockedUntil }
+
+function getClientIp(request) {
+    const fwd = request.headers.get('x-forwarded-for');
+    if (fwd) return fwd.split(',')[0].trim();
+    return request.headers.get('x-real-ip') || 'unknown';
+}
+
+function checkRateLimit(ip) {
+    const now = Date.now();
+    const entry = attempts.get(ip);
+
+    if (!entry) return { allowed: true };
+
+    if (entry.lockedUntil && entry.lockedUntil > now) {
+        return { allowed: false, retryAfterSec: Math.ceil((entry.lockedUntil - now) / 1000) };
+    }
+
+    // Jendela percobaan udah lewat -> mulai hitungan baru
+    if (now - entry.firstAt > WINDOW_MS) {
+        attempts.delete(ip);
+        return { allowed: true };
+    }
+
+    return { allowed: true };
+}
+
+function recordFailure(ip) {
+    const now = Date.now();
+    const entry = attempts.get(ip);
+
+    if (!entry || now - entry.firstAt > WINDOW_MS) {
+        attempts.set(ip, { count: 1, firstAt: now, lockedUntil: 0 });
+        return;
+    }
+
+    entry.count += 1;
+    if (entry.count >= MAX_ATTEMPTS) entry.lockedUntil = now + LOCKOUT_MS;
+
+    // Bersihin entri basi sekalian, biar Map-nya gak numpuk terus.
+    if (attempts.size > 500) {
+        for (const [key, val] of attempts) {
+            if (now - val.firstAt > WINDOW_MS && (!val.lockedUntil || val.lockedUntil < now)) {
+                attempts.delete(key);
+            }
+        }
+    }
+}
 
 export async function POST(request) {
+    const ip = getClientIp(request);
+
+    const limit = checkRateLimit(ip);
+    if (!limit.allowed) {
+        return NextResponse.json(
+            { error: `Terlalu banyak percobaan login. Coba lagi dalam ${Math.ceil(limit.retryAfterSec / 60)} menit.` },
+            { status: 429, headers: { 'Retry-After': String(limit.retryAfterSec) } }
+        );
+    }
+
     let body;
     try {
         body = await request.json();
@@ -18,7 +86,7 @@ export async function POST(request) {
     }
 
     const { email, password } = body || {};
-    if (!email || !password) {
+    if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
         return NextResponse.json({ error: 'Email dan password wajib diisi.' }, { status: 400 });
     }
 
@@ -26,27 +94,33 @@ export async function POST(request) {
     const adminPasswordHashB64 = process.env.ADMIN_PASSWORD_HASH_B64;
 
     if (!adminEmail || !adminPasswordHashB64) {
-        return NextResponse.json(
-            { error: 'ADMIN_EMAIL / ADMIN_PASSWORD_HASH_B64 belum diatur di .env.local' },
-            { status: 500 }
-        );
+        // Pesan errornya digeneralisir — versi lama nyebutin nama variabel
+        // env-nya ke siapa pun yang manggil endpoint ini.
+        console.error('ADMIN_EMAIL / ADMIN_PASSWORD_HASH_B64 belum diatur.');
+        return NextResponse.json({ error: 'Konfigurasi server belum lengkap.' }, { status: 500 });
     }
 
-    // Hash bcrypt-nya disimpan dalam bentuk Base64 di .env.local (biar gak
-    // kena masalah tanda "$" yang diterjemahin Next.js sebagai referensi
-    // variabel) — di-decode balik ke bentuk aslinya di sini sebelum dicek.
+    // Hash bcrypt disimpan Base64 di .env.local biar tanda "$" gak dianggap
+    // referensi variabel — di-decode balik di sini.
     const adminPasswordHash = Buffer.from(adminPasswordHashB64, 'base64').toString('utf8');
 
     const emailMatches = email.trim().toLowerCase() === adminEmail.trim().toLowerCase();
 
-    // SELALU panggil bcrypt.compare, apapun hasil pengecekan email di atas
-    // — kalau email gak cocok, dibandingin ke DUMMY_HASH (hasilnya pasti
-    // false, tapi makan waktu proses yang sama kayak compare ke hash asli).
-    const passwordMatches = await bcrypt.compare(password, emailMatches ? adminPasswordHash : DUMMY_HASH);
+    // Selalu compare ke hash ASLI, apapun hasil cek email. Versi lama pakai
+    // DUMMY_HASH pas email salah — itu jalan, tapi cuma kalau cost factor
+    // dummy-nya persis sama dengan hash asli. Kalau hash asli cost 12 dan
+    // dummy-nya cost 10, waktu responsnya beda jelas dan justru bocorin
+    // email admin yang bener. Compare ke hash asli bikin masalah itu hilang
+    // total tanpa perlu dummy.
+    const passwordMatches = await bcrypt.compare(password, adminPasswordHash);
 
     if (!emailMatches || !passwordMatches) {
+        recordFailure(ip);
         return NextResponse.json({ error: 'Email atau password salah.' }, { status: 401 });
     }
+
+    // Login sukses -> hitungan gagal buat IP ini direset.
+    attempts.delete(ip);
 
     const token = createAdminSessionToken(adminEmail);
 
@@ -56,7 +130,7 @@ export async function POST(request) {
         secure: process.env.NODE_ENV === 'production',
         sameSite: 'lax',
         path: '/',
-        maxAge: 12 * 60 * 60, // 12 jam, dalam detik
+        maxAge: 12 * 60 * 60, // samain dengan SESSION_DURATION_MS di lib/adminAuth.js
     });
     return response;
 }

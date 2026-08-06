@@ -5,7 +5,6 @@ import { List, Search, AlertTriangle, RefreshCw, ChevronLeft, ChevronRight, Chev
 import { formatRupiah } from '../data/services';
 import { fetchLiveCatalog } from '../data/liveCatalog';
 import { loadDisabledServiceIds, filterDisabledFromCatalog } from '../data/serviceOverrides';
-import { loadMarkupPersen, loadKursUsdIdr } from '../data/pricingSettings';
 
 const ITEMS_PER_PAGE = 25;
 
@@ -33,9 +32,11 @@ export default function DaftarLayananSection({ initialQuery = '' }) {
         setLoading(true);
         setError('');
         try {
-            const kursUsdIdr = await loadKursUsdIdr();
-            const markupPersen = await loadMarkupPersen();
-            const rawGrouped = await fetchLiveCatalog(kursUsdIdr, markupPersen);
+            // Harga sekarang dihitung DI SERVER (app/api/services/route.js), jadi
+            // kurs & markup gak perlu ditarik ke browser lagi. Dulu dua angka itu
+            // diambil dari /api/settings/pricing yang publik — margin per layanan
+            // jadi bisa dihitung mundur siapa pun yang buka DevTools.
+            const rawGrouped = await fetchLiveCatalog();
             const disabledIds = await loadDisabledServiceIds();
             const grouped = filterDisabledFromCatalog(rawGrouped, disabledIds);
             setPlatforms(grouped);
