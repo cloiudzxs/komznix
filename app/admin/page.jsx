@@ -3,7 +3,7 @@
 import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import {
     Asterisk,
     LayoutDashboard,
@@ -207,9 +207,11 @@ const TrendChart = ({ data, loading }) => {
     const [size, setSize] = useState({ width: 900, height: 260 });
     const [hoverIndex, setHoverIndex] = useState(null);
 
-    useEffect(() => {
+    // useLayoutEffect: ukur sebelum browser paint, biar frame pertama gak
+    // sempat kelihatan pakai ukuran default.
+    useLayoutEffect(() => {
         const el = containerRef.current;
-        if (!el || typeof ResizeObserver === 'undefined') return;
+        if (!el) return;
         const update = () => {
             const rect = el.getBoundingClientRect();
             if (rect.width > 0 && rect.height > 0) {
@@ -221,6 +223,7 @@ const TrendChart = ({ data, loading }) => {
             }
         };
         update();
+        if (typeof ResizeObserver === 'undefined') return;
         const ro = new ResizeObserver(update);
         ro.observe(el);
         return () => ro.disconnect();
@@ -297,17 +300,14 @@ const TrendChart = ({ data, loading }) => {
     const tooltipLeftPct = width > 0 && activeX !== null ? (activeX / width) * 100 : 0;
     const tooltipAlign = tooltipLeftPct < 15 ? 'left' : tooltipLeftPct > 85 ? 'right' : 'center';
 
-    if (loading) {
-        return <div className="w-full h-64 sm:h-72 lg:h-80 rounded-xl bg-white/5 animate-pulse" />;
-    }
-
-    if (data.length === 0) {
-        return (
-            <div className="w-full h-64 sm:h-72 lg:h-80 flex items-center justify-center text-sm text-gray-500">
-                Belum ada pesanan di rentang ini.
-            </div>
-        );
-    }
+    // Container ber-ref HARUS selalu ke-render, termasuk pas loading.
+    // Sebelumnya di sini ada early-return skeleton, jadi pas mount pertama
+    // (loading = true) div-nya belum ada -> containerRef.current null ->
+    // ResizeObserver gak pernah kepasang, dan karena deps efeknya [] dia gak
+    // pernah jalan lagi. Ukuran nyangkut di default 900x260, viewBox jadi
+    // lebih kecil dari container, dan SVG-nya di-letterbox (kekecilan +
+    // ada ruang kosong kiri-kanan).
+    const isEmpty = !loading && data.length === 0;
 
     return (
         <div
@@ -319,91 +319,103 @@ const TrendChart = ({ data, loading }) => {
             onPointerLeave={clearHover}
             onPointerCancel={clearHover}
         >
-            <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full block" role="img" aria-label="Grafik tren pendapatan dan pesanan">
-                <defs>
-                    <linearGradient id="trendPendapatanGrad" x1="0" y1="0" x2="0" y2="1">
-                        <stop offset="0%" stopColor="#FFB800" stopOpacity="0.3" />
-                        <stop offset="100%" stopColor="#FFB800" stopOpacity="0" />
-                    </linearGradient>
-                </defs>
+            {loading && <div className="absolute inset-0 rounded-xl bg-white/5 animate-pulse" />}
 
-                {gridFractions.map((f) => {
-                    const y = padding.top + chartH * (1 - f);
-                    return (
-                        <g key={f}>
-                            <line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="#ffffff" strokeOpacity="0.06" />
-                            {/* Ruang 46px di kiri sekarang kepakai: skala pendapatan */}
-                            <text x={padding.left - 8} y={y + 3.5} textAnchor="end" fontSize="10" fill="#6f6f6f">
-                                {formatRupiahRingkas(geom.maxPendapatan * f)}
-                            </text>
-                        </g>
-                    );
-                })}
-
-                <path d={geom.areaPath} fill="url(#trendPendapatanGrad)" />
-                <path d={geom.pendapatanPath} fill="none" stroke="#FFB800" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                <path d={geom.pesananPath} fill="none" stroke="#4EA8FF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-
-                {activeX !== null && (
-                    <>
-                        <line
-                            x1={activeX}
-                            x2={activeX}
-                            y1={padding.top}
-                            y2={baseY}
-                            stroke="#ffffff"
-                            strokeOpacity="0.15"
-                            strokeDasharray="4 4"
-                        />
-                        <circle
-                            cx={geom.pendapatanPoints[hoverIndex][0]}
-                            cy={geom.pendapatanPoints[hoverIndex][1]}
-                            r="5"
-                            fill="#FFB800"
-                            stroke="#111111"
-                            strokeWidth="2"
-                        />
-                        <circle
-                            cx={geom.pesananPoints[hoverIndex][0]}
-                            cy={geom.pesananPoints[hoverIndex][1]}
-                            r="5"
-                            fill="#4EA8FF"
-                            stroke="#111111"
-                            strokeWidth="2"
-                        />
-                    </>
-                )}
-
-                {data.map((d, i) =>
-                    geom.labelIndexes.has(i) ? (
-                        <text key={`${d.label}-${i}`} x={geom.xFor(i)} y={height - 6} textAnchor="middle" fontSize="11" fill="#8a8a8a">
-                            {d.label}
-                        </text>
-                    ) : null
-                )}
-            </svg>
-
-            {active && (
-                <div
-                    className="absolute top-0 pointer-events-none bg-[#191A19] border border-white/10 rounded-xl px-3 py-2 text-xs shadow-xl whitespace-nowrap z-10"
-                    style={{
-                        left: `${tooltipLeftPct}%`,
-                        transform:
-                            tooltipAlign === 'left'
-                                ? 'translate(0, 0)'
-                                : tooltipAlign === 'right'
-                                    ? 'translate(-100%, 0)'
-                                    : 'translate(-50%, 0)',
-                    }}
-                >
-                    <p className="font-medium text-white mb-1.5">{active.label}</p>
-                    <p className="flex items-center gap-1.5 text-[#FFB800]">
-                        <span className="w-2 h-2 rounded-full bg-[#FFB800]" /> Pendapatan: {formatRupiah(active.pendapatan)}
-                    </p>
-                    <p className="flex items-center gap-1.5 text-[#4EA8FF] mt-0.5">
-                        <span className="w-2 h-2 rounded-full bg-[#4EA8FF]" /> Pesanan: {formatAngka(active.pesanan)}
-                    </p>
+            {isEmpty && (
+                <div className="absolute inset-0 flex items-center justify-center text-sm text-gray-500">
+                    Belum ada pesanan di rentang ini.
                 </div>
+            )}
+
+            {!loading && !isEmpty && (
+                <>
+                    <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full block" role="img" aria-label="Grafik tren pendapatan dan pesanan">
+                        <defs>
+                            <linearGradient id="trendPendapatanGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#FFB800" stopOpacity="0.3" />
+                                <stop offset="100%" stopColor="#FFB800" stopOpacity="0" />
+                            </linearGradient>
+                        </defs>
+
+                        {gridFractions.map((f) => {
+                            const y = padding.top + chartH * (1 - f);
+                            return (
+                                <g key={f}>
+                                    <line x1={padding.left} x2={width - padding.right} y1={y} y2={y} stroke="#ffffff" strokeOpacity="0.06" />
+                                    {/* Ruang 46px di kiri sekarang kepakai: skala pendapatan */}
+                                    <text x={padding.left - 8} y={y + 3.5} textAnchor="end" fontSize="10" fill="#6f6f6f">
+                                        {formatRupiahRingkas(geom.maxPendapatan * f)}
+                                    </text>
+                                </g>
+                            );
+                        })}
+
+                        <path d={geom.areaPath} fill="url(#trendPendapatanGrad)" />
+                        <path d={geom.pendapatanPath} fill="none" stroke="#FFB800" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                        <path d={geom.pesananPath} fill="none" stroke="#4EA8FF" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+
+                        {activeX !== null && (
+                            <>
+                                <line
+                                    x1={activeX}
+                                    x2={activeX}
+                                    y1={padding.top}
+                                    y2={baseY}
+                                    stroke="#ffffff"
+                                    strokeOpacity="0.15"
+                                    strokeDasharray="4 4"
+                                />
+                                <circle
+                                    cx={geom.pendapatanPoints[hoverIndex][0]}
+                                    cy={geom.pendapatanPoints[hoverIndex][1]}
+                                    r="5"
+                                    fill="#FFB800"
+                                    stroke="#111111"
+                                    strokeWidth="2"
+                                />
+                                <circle
+                                    cx={geom.pesananPoints[hoverIndex][0]}
+                                    cy={geom.pesananPoints[hoverIndex][1]}
+                                    r="5"
+                                    fill="#4EA8FF"
+                                    stroke="#111111"
+                                    strokeWidth="2"
+                                />
+                            </>
+                        )}
+
+                        {data.map((d, i) =>
+                            geom.labelIndexes.has(i) ? (
+                                <text key={`${d.label}-${i}`} x={geom.xFor(i)} y={height - 6} textAnchor="middle" fontSize="11" fill="#8a8a8a">
+                                    {d.label}
+                                </text>
+                            ) : null
+                        )}
+                    </svg>
+
+                    {active && (
+                        <div
+                            className="absolute top-0 pointer-events-none bg-[#191A19] border border-white/10 rounded-xl px-3 py-2 text-xs shadow-xl whitespace-nowrap z-10"
+                            style={{
+                                left: `${tooltipLeftPct}%`,
+                                transform:
+                                    tooltipAlign === 'left'
+                                        ? 'translate(0, 0)'
+                                        : tooltipAlign === 'right'
+                                            ? 'translate(-100%, 0)'
+                                            : 'translate(-50%, 0)',
+                            }}
+                        >
+                            <p className="font-medium text-white mb-1.5">{active.label}</p>
+                            <p className="flex items-center gap-1.5 text-[#FFB800]">
+                                <span className="w-2 h-2 rounded-full bg-[#FFB800]" /> Pendapatan: {formatRupiah(active.pendapatan)}
+                            </p>
+                            <p className="flex items-center gap-1.5 text-[#4EA8FF] mt-0.5">
+                                <span className="w-2 h-2 rounded-full bg-[#4EA8FF]" /> Pesanan: {formatAngka(active.pesanan)}
+                            </p>
+                        </div>
+                    )}
+                </>
             )}
         </div>
     );

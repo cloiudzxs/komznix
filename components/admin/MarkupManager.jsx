@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Percent, Save, Search, DollarSign, Calculator, Loader2, CheckCircle2, AlertTriangle, RefreshCw, ChevronLeft, ChevronRight } from 'lucide-react';
 import { formatRupiah } from '../../data/services';
-import { fetchLiveCatalog } from '../../data/liveCatalog';
 
 const ITEMS_PER_PAGE = 25;
 
@@ -23,24 +22,32 @@ export default function MarkupManager() {
     const [catalogLoading, setCatalogLoading] = useState(true);
     const [catalogError, setCatalogError] = useState('');
 
-    // Ambil katalog LIVE dari provider, tapi minta harga TANPA markup
-    // (markupPersen dikirim 0) — biar r.pricePer1000 di sini murni Harga
-    // Dasar. Harga Jual dihitung ulang di JSX pakai markupPersen state saat
-    // ini, biar preview-nya ikut berubah live pas admin ngetik di form atas,
-    // tanpa perlu fetch ulang tiap keystroke.
+    // Ambil katalog MENTAH dari /api/smm/services (admin-only) — di situ ada
+    // field `rate`, yaitu modal per 1000 dalam USD. Harga Dasar = rate x kurs.
+    //
+    // Sebelumnya di sini pakai fetchLiveCatalog(kurs, 0) dengan asumsi kirim
+    // markup 0 bikin harganya polos. Sejak perhitungan harga pindah ke server,
+    // argumen itu diabaikan dan yang balik justru harga yang SUDAH kena markup
+    // — jadi kolom "Harga Dasar" nampilin harga jual, dan "Harga Jual" jadi
+    // markup dobel (0.19 x 18000 x 1.7 x 1.7).
     async function loadCatalog(kurs) {
         setCatalogLoading(true);
         setCatalogError('');
         try {
-            const grouped = await fetchLiveCatalog(kurs, 0);
-            const flat = [];
-            grouped.forEach((platform) => {
-                platform.categories.forEach((category) => {
-                    category.services.forEach((service) => {
-                        flat.push({ ...service, platform: platform.label });
-                    });
-                });
-            });
+            const res = await fetch('/api/smm/services', { cache: 'no-store' });
+            const data = await res.json().catch(() => ({}));
+            if (!res.ok || data.error) throw new Error(data.error || 'Gagal memuat katalog.');
+
+            const flat = (data.services || []).map((service) => ({
+                id: String(service.service),
+                name: service.name,
+                platform: service.category || '-',
+                // pricePer1000 di sini = HARGA DASAR (modal), bukan harga jual.
+                // Harga Jual dihitung di JSX pakai markupPersen state, biar
+                // preview-nya berubah live pas admin ngetik tanpa fetch ulang.
+                pricePer1000: (Number(service.rate) || 0) * kurs,
+            }));
+
             setRows(flat);
         } catch (err) {
             setCatalogError(err.message);

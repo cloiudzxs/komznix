@@ -4,6 +4,14 @@ import { createAdminClient } from '@/lib/supabase/admin';
 import { groupServices } from '@/data/liveCatalog';
 import { filterDisabledFromCatalog } from '@/data/serviceOverrides';
 import { DEFAULT_MARKUP_PERSEN, DEFAULT_KURS_USD_IDR } from '@/data/pricingSettings';
+import {
+    buildCacheKey,
+    readGroupedServices,
+    readRawServices,
+    readStaleRawServices,
+    writeGroupedServices,
+    writeRawServices,
+} from '@/lib/servicesCache';
 
 /* -------------------------------------------------------------------- *
  * Katalog layanan versi PUBLIK.
@@ -20,10 +28,6 @@ import { DEFAULT_MARKUP_PERSEN, DEFAULT_KURS_USD_IDR } from '@/data/pricingSetti
  * /api/smm/services tetap ada dan tetap admin-only — itu yang dipakai
  * panel admin buat ngitung margin.
  * -------------------------------------------------------------------- */
-
-const CACHE_TTL_MS = 5 * 60 * 1000;
-
-let cache = { at: 0, payload: null };
 
 // Tabel `settings` bentuknya key-value (satu baris per pengaturan), sama
 // persis kayak yang dibaca /api/settings/pricing. Bukan satu baris dengan
@@ -83,19 +87,27 @@ async function loadDisabledIds(supabase) {
 
 export async function GET(request) {
     const force = new URL(request.url).searchParams.get('refresh') === '1';
-
-    if (!force && cache.payload && Date.now() - cache.at < CACHE_TTL_MS) {
-        return NextResponse.json(cache.payload);
-    }
-
     const supabase = createAdminClient();
 
+    // Pengaturan harga dibaca SETIAP request — ini cuma satu query kecil ke
+    // Supabase, dan bikin perubahan markup/kurs langsung kepakai tanpa perlu
+    // nunggu TTL atau ngandelin invalidate lintas route.
+    const [pricing, disabledIds] = await Promise.all([loadPricing(supabase), loadDisabledIds(supabase)]);
+    const cacheKey = buildCacheKey({ ...pricing, disabledIds });
+
+    if (!force) {
+        const cached = readGroupedServices(cacheKey);
+        if (cached) return NextResponse.json(cached);
+    }
+
     try {
-        const [rawServices, pricing, disabledIds] = await Promise.all([
-            getServices(),
-            loadPricing(supabase),
-            loadDisabledIds(supabase),
-        ]);
+        // Yang di-cache pakai TTL cuma daftar mentah dari provider — bagian
+        // yang mahal. Sisanya (markup, grouping) dihitung ulang.
+        let rawServices = force ? null : readRawServices();
+        if (!rawServices) {
+            rawServices = await getServices();
+            writeRawServices(Array.isArray(rawServices) ? rawServices : []);
+        }
 
         const grouped = groupServices(
             Array.isArray(rawServices) ? rawServices : [],
@@ -106,13 +118,24 @@ export async function GET(request) {
         const platforms = filterDisabledFromCatalog(grouped, disabledIds);
         const payload = { platforms, cachedAt: Date.now() };
 
-        cache = { at: Date.now(), payload };
+        writeGroupedServices(cacheKey, payload);
         return NextResponse.json(payload);
     } catch (err) {
         console.error('Gagal menyusun katalog publik:', err.message);
-        // Masih punya versi lama? Sajikan itu daripada halaman pelanggan
-        // kosong gara-gara provider lagi ngambek.
-        if (cache.payload) return NextResponse.json(cache.payload);
+
+        // Provider lagi ngambek tapi masih punya salinan mentah? Pakai itu —
+        // tetap dihitung ulang pakai markup/kurs yang berlaku sekarang, jadi
+        // harganya gak pernah basi walau katalognya iya.
+        const stale = readStaleRawServices();
+        if (stale) {
+            const grouped = groupServices(stale, pricing.kursUsdIdr, pricing.markupPersen);
+            return NextResponse.json({
+                platforms: filterDisabledFromCatalog(grouped, disabledIds),
+                cachedAt: Date.now(),
+                stale: true,
+            });
+        }
+
         return NextResponse.json({ error: 'Gagal memuat layanan.' }, { status: 500 });
     }
 }
