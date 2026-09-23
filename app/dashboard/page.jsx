@@ -517,6 +517,14 @@ function DashboardContent() {
     const [balance, setBalance] = useState(0);
     const [orders, setOrders] = useState([]);
     const [loadError, setLoadError] = useState('');
+    const [balanceNotice, setBalanceNotice] = useState('');
+    // Dipakai buat bandingin saldo lama vs baru pas event realtime masuk,
+    // tanpa gantungin ke payload.old (yang cuma isi primary key kalau
+    // REPLICA IDENTITY tabel `profiles` bukan FULL).
+    const balanceRef = useRef(0);
+    useEffect(() => {
+        balanceRef.current = balance;
+    }, [balance]);
 
     // --- Pengaturan: profil & password lewat Supabase; notifikasi masih lokal ---
     const [settingsName, setSettingsName] = useState('');
@@ -552,13 +560,50 @@ function DashboardContent() {
                     return;
                 }
 
-                const { data: profile } = await supabase
-                    .from('profiles')
-                    .select('full_name, email, balance, referral_code, komisi_balance, status')
-                    .eq('id', session.user.id)
-                    .maybeSingle();
+                // FIX: query-query di bawah ini independen satu sama lain
+                // (cuma butuh session.user.id), tapi sebelumnya dijalanin
+                // berurutan pakai await satu-satu — profiles, lalu referred
+                // count, lalu komisi persen, lalu orders, lalu broadcasts.
+                // Kalau tiap round-trip ke Supabase makan ~300-600ms, lima
+                // query berantai itu bisa jadi 1.5-3 detik dashboard cuma
+                // nampilin skeleton (DashboardSkeleton) — inilah yang keliatan
+                // "stuck lama" abis login. Promise.all jalanin semuanya
+                // bersamaan, jadi total waktu tunggu ~= query paling lambat,
+                // bukan jumlah semuanya.
+                const [
+                    profileRes,
+                    referredRes,
+                    persen,
+                    ordersRes,
+                    loadedBroadcasts,
+                ] = await Promise.all([
+                    supabase
+                        .from('profiles')
+                        .select('full_name, email, balance, referral_code, komisi_balance, status')
+                        .eq('id', session.user.id)
+                        .maybeSingle(),
+                    supabase
+                        .from('profiles')
+                        .select('id', { count: 'exact', head: true })
+                        .eq('referred_by', session.user.id),
+                    loadReferralKomisiPersen(),
+                    // .eq('user_id', ...) sengaja ditulis eksplisit walau RLS
+                    // udah scoped per user — kalau policy-nya suatu saat
+                    // kesenggol, query ini tetep gak bakal narik order milik
+                    // orang lain.
+                    supabase
+                        .from('orders')
+                        .select(ORDER_COLUMNS)
+                        .eq('user_id', session.user.id)
+                        .order('created_at', { ascending: false }),
+                    loadBroadcasts(),
+                ]);
 
                 if (!mounted) return;
+
+                const profile = profileRes.data;
+                const referredTotal = referredRes.count;
+                const { data: orderRows, error: orderError } = ordersRes;
 
                 // Akun yang di-suspend admin gak boleh bisa pakai dashboard sama
                 // sekali — sign out paksa & tendang ke /login, bukan cuma
@@ -578,32 +623,20 @@ function DashboardContent() {
                 setKomisiBalance(Number(profile?.komisi_balance) || 0);
                 setApiKey(loadOrCreateApiKey());
 
-                const { count: referredTotal } = await supabase
-                    .from('profiles')
-                    .select('id', { count: 'exact', head: true })
-                    .eq('referred_by', session.user.id);
-                if (!mounted) return;
                 setReferredCount(referredTotal || 0);
-
-                const persen = await loadReferralKomisiPersen();
-                if (!mounted) return;
                 setKomisiPersen(persen);
 
-                // .eq('user_id', ...) sengaja ditulis eksplisit walau RLS udah
-                // scoped per user — kalau policy-nya suatu saat kesenggol,
-                // query ini tetep gak bakal narik order milik orang lain.
-                const { data: orderRows, error: orderError } = await supabase
-                    .from('orders')
-                    .select(ORDER_COLUMNS)
-                    .eq('user_id', session.user.id)
-                    .order('created_at', { ascending: false });
-
-                if (!mounted) return;
                 if (orderError) {
                     console.error('Gagal memuat pesanan:', orderError.message);
                     setLoadError('Riwayat pesanan gagal dimuat. Coba refresh halaman.');
                 }
                 setOrders((orderRows || []).map(mapOrderRow));
+
+                setBroadcasts(loadedBroadcasts);
+                if (loadedBroadcasts.length > 0) {
+                    const seenAt = Number(localStorage.getItem(BROADCAST_SEEN_KEY) || 0);
+                    setHasUnseenBroadcast(new Date(loadedBroadcasts[0].created_at).getTime() > seenAt);
+                }
 
                 // Sync status ke provider di background — gak nunggu ini kelar
                 // buat nampilin dashboard duluan. Kalau ada yang berubah, ambil
@@ -623,14 +656,6 @@ function DashboardContent() {
                         if (mounted && res?.data) setOrders(res.data.map(mapOrderRow));
                     })
                     .catch((err) => console.error('Gagal sync status pesanan:', err.message));
-
-                const loaded = await loadBroadcasts();
-                if (!mounted) return;
-                setBroadcasts(loaded);
-                if (loaded.length > 0) {
-                    const seenAt = Number(localStorage.getItem(BROADCAST_SEEN_KEY) || 0);
-                    setHasUnseenBroadcast(new Date(loaded[0].created_at).getTime() > seenAt);
-                }
             } catch (err) {
                 console.error('Gagal memuat dashboard:', err);
                 if (mounted) setLoadError('Gagal memuat data. Coba refresh halaman.');
@@ -668,7 +693,21 @@ function DashboardContent() {
                         router.push('/login?suspended=1');
                         return;
                     }
-                    setBalance(Number(next.balance) || 0);
+
+                    const nextBalance = Number(next.balance) || 0;
+
+                    // Saldo nambah (mis. admin baru aja konfirmasi topup manual)
+                    // -> munculin toast, bukan cuma diem-diem ganti angka di
+                    // StatCard yang bisa aja gak kelihatan pelanggan.
+                    if (nextBalance > balanceRef.current) {
+                        const diff = nextBalance - balanceRef.current;
+                        setBalanceNotice(
+                            `Saldo kamu bertambah ${formatRupiah(diff)}. Saldo sekarang ${formatRupiah(nextBalance)}.`
+                        );
+                        setTimeout(() => setBalanceNotice(''), 6000);
+                    }
+
+                    setBalance(nextBalance);
                     setKomisiBalance(Number(next.komisi_balance) || 0);
                 }
             )
@@ -1346,6 +1385,15 @@ function DashboardContent() {
 
     return (
         <div className="bg-[#111111] min-h-screen text-white flex">
+            {/* Toast saldo bertambah — realtime, jadi bisa muncul di menu mana pun,
+                bukan cuma pas lagi buka Overview. */}
+            {balanceNotice && (
+                <div className="fixed top-6 right-6 z-50 flex items-start gap-2 bg-[#191A19] border border-[#B9FF66]/40 text-[#B9FF66] text-sm rounded-xl px-4 py-3 shadow-xl max-w-sm">
+                    <CheckCircle2 className="w-4 h-4 shrink-0 mt-0.5" />
+                    <span>{balanceNotice}</span>
+                </div>
+            )}
+
             {/* Sidebar - desktop */}
             <aside className="hidden lg:flex lg:w-72 flex-col border-r border-white/10 p-6 shrink-0">
                 <SidebarContent activeMenu={activeMenu} onSelect={setActiveMenu} onLogout={handleLogout} />
